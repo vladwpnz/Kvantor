@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1028664479548",
+    "project_id": "kvantor1-c58e1",
+    "storage_bucket": "kvantor1-c58e1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1028664479548:android:975f87bde80a7dabc5d839",
+        "android_client_info": {
+          "package_name": "com.bambiloff.kvantor"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD6Wp9toeQFGaDxzQp-Q-UkieRzYa1RcCg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
