@@ -43,7 +43,8 @@
 
         <activity android:name=".WelcomeActivity" />
         <activity android:name=".ProfileActivity" android:exported="false"/>
-        <activity android:name=".LessonActivity" />
+        <activity android:name=".LessonActivity"
+            android:windowSoftInputMode="adjustResize" />
 
     </application>
 

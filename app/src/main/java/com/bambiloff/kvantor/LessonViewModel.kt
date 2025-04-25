@@ -8,88 +8,110 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
-/**
- * Тримає увесь стан уроків:
- *   – список модулів з Firestore
- *   – поточний модуль / сторінку
- *   – навігацію «Далі»
- */
 class LessonViewModel : ViewModel() {
 
-    /* ---------- Firebase ---------- */
-    private val db = FirebaseFirestore.getInstance()
+    private val db   = FirebaseFirestore.getInstance()
+    private val auth = FirebaseAuth.getInstance()
 
-    /* ---------- STATE ---------- */
-
-    /** Усі модулі, що прийшли з БД */
     private val _modules = MutableStateFlow<List<Module>>(emptyList())
     val modules: StateFlow<List<Module>> = _modules
 
-    /** Індекс активного модуля */
     private val _currentModuleIndex = MutableStateFlow(0)
     val currentModuleIndex: StateFlow<Int> = _currentModuleIndex
 
-    /** Індекс сторінки в середині активного модуля */
     private val _currentPageIndex = MutableStateFlow(0)
     val currentPageIndex: StateFlow<Int> = _currentPageIndex
 
-    /** Корисний «курсор» на активний модуль */
     val currentModule: StateFlow<Module?> =
-        combine(_modules, _currentModuleIndex) { list, idx ->
-            list.getOrNull(idx)
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+        combine(_modules, _currentModuleIndex) { list, idx -> list.getOrNull(idx) }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    /* ---------- Завантаження модулів ---------- */
-
-    /** Один раз при старті витягуємо модулі з Firestore */
-    fun loadModules() = viewModelScope.launch {
-        try {
-            val snapshot = db.collection("modules").get().await()
-            val loaded   = snapshot.documents
-                .mapNotNull { it.toObject(ModuleDto::class.java)?.toModule() }
-                .sortedBy   { it.id }
-
-            _modules.value = loaded
-            println("Завантажені модулі: ${loaded.map { it.id }}")
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    /* ---------- Фіксуємо, що модуль пройдено ---------- */
-
-    private fun markModuleCompleted(moduleId: String) {
-        val user = FirebaseAuth.getInstance().currentUser ?: return
-        val userDoc = db.collection("users").document(user.uid)
-
-        db.runTransaction { txn ->
-            val done = txn.get(userDoc).get("completedModules") as? List<String> ?: emptyList()
-            if (moduleId !in done) txn.update(userDoc, "completedModules", done + moduleId)
-        }.addOnSuccessListener {
-            println("✅ Модуль '$moduleId' збережено.")
-        }
-    }
-
-    /* ---------- НАВІГАЦІЯ «Далі» ---------- */
-
-    /**
-     * Якщо всередині модуля є ще сторінки — йдемо до них.
-     * Інакше — переходимо на наступний модуль і починаємо його з 0‑ї сторінки.
-     */
-    fun next() {
-        val module = currentModule.value ?: return
-
-        if (_currentPageIndex.value < module.pages.lastIndex) {
-            // є ще сторінки
-            _currentPageIndex.value += 1
-        } else {
-            // модуль закінчився
-            markModuleCompleted(module.id)
-
-            if (_currentModuleIndex.value < _modules.value.lastIndex) {
-                _currentModuleIndex.value += 1   // наступний модуль
-                _currentPageIndex.value  = 0     // з початку
+    /** Завантажує всі модулі і відразу намагається відновити прогрес */
+    fun loadModules() {
+        viewModelScope.launch {
+            try {
+                val snapshot = db.collection("modules").get().await()
+                val loaded = snapshot.documents
+                    .mapNotNull { it.toObject(ModuleDto::class.java)?.toModule() }
+                    .sortedBy { it.id }
+                _modules.value = loaded
+                loadProgress()
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
+    }
+
+    /** Зберігає поточний стан (moduleIndex + pageIndex) в Firestore */
+    private fun saveProgress() {
+        val user = auth.currentUser ?: return
+        val data = mapOf(
+            "moduleIndex" to _currentModuleIndex.value,
+            "pageIndex"   to _currentPageIndex.value
+        )
+        db.collection("users")
+            .document(user.uid)
+            .update("progress", data)
+            .addOnSuccessListener { println("✅ Прогрес збережено: $data") }
+            .addOnFailureListener { e -> println("❌ Save error: ${e.message}") }
+    }
+
+    /** Відновлює стан із Firestore і кладе в stateFlow, із clamp індексів */
+    private fun loadProgress() {
+        val user = auth.currentUser ?: return
+        viewModelScope.launch {
+            try {
+                val doc = db.collection("users").document(user.uid).get().await()
+                @Suppress("UNCHECKED_CAST")
+                val prog = doc.get("progress") as? Map<String, Any>
+                val mIdx = (prog?.get("moduleIndex") as? Long)?.toInt() ?: 0
+                val pIdx = (prog?.get("pageIndex")   as? Long)?.toInt() ?: 0
+
+                // Clamp модуля
+                val maxModule = _modules.value.lastIndex.coerceAtLeast(0)
+                _currentModuleIndex.value = mIdx.coerceIn(0, maxModule)
+
+                // Clamp сторінки
+                val pages   = _modules.value.getOrNull(_currentModuleIndex.value)?.pages?.size ?: 1
+                val maxPage = (pages - 1).coerceAtLeast(0)
+                _currentPageIndex.value = pIdx.coerceIn(0, maxPage)
+
+                println("📥 Прогрес відновлено: module=$mIdx, page=$pIdx")
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    /** Позначає модуль як завершений у списку користувача */
+    private fun markModuleCompleted(moduleId: String) {
+        val user = auth.currentUser ?: return
+        val ref  = db.collection("users").document(user.uid)
+        db.runTransaction { tx ->
+            val done = tx.get(ref).get("completedModules") as? List<String> ?: emptyList()
+            if (moduleId !in done) tx.update(ref, "completedModules", done + moduleId)
+        }.addOnSuccessListener {
+            println("✅ Module completed: $moduleId")
+        }
+    }
+
+    /**
+     * Навігація «Далі»:
+     * – ++pageIndex, якщо в модулі ще є сторінки
+     * – інакше — markModuleCompleted + ++moduleIndex + pageIndex = 0
+     * Після кожного кроку зберігає прогрес.
+     */
+    fun next() {
+        val mod = currentModule.value ?: return
+        if (_currentPageIndex.value < mod.pages.lastIndex) {
+            _currentPageIndex.value += 1
+        } else {
+            markModuleCompleted(mod.id)
+            if (_currentModuleIndex.value < _modules.value.lastIndex) {
+                _currentModuleIndex.value += 1
+                _currentPageIndex.value = 0
+            }
+        }
+        saveProgress()
     }
 }

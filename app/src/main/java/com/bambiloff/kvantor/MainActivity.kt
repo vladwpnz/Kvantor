@@ -5,11 +5,12 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,6 +26,7 @@ import com.bambiloff.kvantor.ui.theme.KvantorTheme
 import com.bambiloff.kvantor.ui.theme.Rubik
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import androidx.compose.foundation.Image
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,28 +42,19 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PythonCourseScreen() {
     val context = LocalContext.current
-    val uid = FirebaseAuth.getInstance().currentUser?.uid
+    val uid     = FirebaseAuth.getInstance().currentUser?.uid
+    val db      = FirebaseFirestore.getInstance()
 
-    // За замовчуванням показуємо default_avatar, поки не завантажимо з БД
-    var avatarResId by remember { mutableIntStateOf(R.drawable.default_avatar) }
-
-    // Функція для перетворення рядка в ID
-    fun getAvatarId(name: String): Int {
-        return context.resources.getIdentifier(name, "drawable", context.packageName)
-    }
-
-    // Завантажуємо avatarName з Firestore
+    // Avatar
+    var avatarResId by remember { mutableStateOf(R.drawable.default_avatar) }
     LaunchedEffect(uid) {
-        if (uid != null) {
-            FirebaseFirestore.getInstance().collection("users").document(uid)
+        uid?.let { user ->
+            db.collection("users").document(user)
                 .get()
-                .addOnSuccessListener { document ->
-                    if (document.exists()) {
-                        // Зчитуємо рядок
-                        val avatarName = document.getString("avatarName") ?: "default_avatar"
-                        val resId = getAvatarId(avatarName)
-                        avatarResId = if (resId != 0) resId else R.drawable.default_avatar
-                    }
+                .addOnSuccessListener { doc ->
+                    val name = doc.getString("avatarName") ?: "default_avatar"
+                    val id   = context.resources.getIdentifier(name, "drawable", context.packageName)
+                    avatarResId = if (id != 0) id else R.drawable.default_avatar
                 }
         }
     }
@@ -76,24 +69,27 @@ fun PythonCourseScreen() {
     )
 
     Box(
-        modifier = Modifier
+        Modifier
             .fillMaxSize()
             .background(Color(0xFF390D58))
     ) {
         Column(
-            modifier = Modifier
+            Modifier
                 .fillMaxSize()
                 .padding(horizontal = 24.dp, vertical = 16.dp)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Верхняя строка с аватаром
             Row(
-                modifier = Modifier
+                Modifier
                     .fillMaxWidth()
                     .padding(bottom = 16.dp),
                 horizontalArrangement = Arrangement.End
             ) {
                 Image(
                     painter = painterResource(id = avatarResId),
-                    contentDescription = "Profile",
+                    contentDescription = "Профіль",
                     modifier = Modifier
                         .size(36.dp)
                         .clip(RoundedCornerShape(8.dp))
@@ -103,57 +99,84 @@ fun PythonCourseScreen() {
                 )
             }
 
+            // Заголовок
             Text(
-                text = "PYTHON",
-                fontSize = 28.sp,
+                text       = "PYTHON",
+                fontSize   = 28.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = Rubik,
-                color = Color(0xFF1DE0FF)
+                color      = Color(0xFF1DE0FF)
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(Modifier.height(24.dp))
 
+            // Список тем
             topics.forEach { (title, description) ->
                 var expanded by remember { mutableStateOf(false) }
-
                 Column(
-                    modifier = Modifier
+                    Modifier
                         .fillMaxWidth()
                         .padding(vertical = 4.dp)
-                        .background(Color(0xFF512C77), shape = RoundedCornerShape(6.dp))
+                        .background(Color(0xFF512C77), RoundedCornerShape(6.dp))
                         .clickable { expanded = !expanded }
                         .padding(horizontal = 16.dp, vertical = 10.dp)
                 ) {
                     Text(
-                        text = title,
-                        fontSize = 16.sp,
+                        text       = title,
+                        fontSize   = 16.sp,
                         fontWeight = FontWeight.Medium,
                         fontFamily = Rubik,
-                        color = Color.White
+                        color      = Color.White
                     )
                     AnimatedVisibility(visible = expanded) {
                         Text(
-                            text = description,
-                            fontSize = 14.sp,
+                            text       = description,
+                            fontSize   = 14.sp,
                             fontFamily = Rubik,
-                            color = Color.LightGray,
-                            modifier = Modifier.padding(top = 6.dp)
+                            color      = Color.LightGray,
+                            modifier   = Modifier.padding(top = 6.dp)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(Modifier.height(32.dp))
 
-            Button(
-                onClick = {
-                    // Перехід на екран уроків
-                    context.startActivity(Intent(context, LessonActivity::class.java))
-                },
-                modifier = Modifier.align(Alignment.CenterHorizontally),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DE0FF))
+            // Пустой Spacer, чтобы «затолкать» кнопки вниз, если экран большой
+            Spacer(Modifier.weight(1f))
+
+            // Кнопки внизу
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text("Почати курс", color = Color.Black, fontFamily = Rubik)
+                Button(
+                    onClick = {
+                        // сбросить прогресс и стартовать сначала
+                        uid?.let { user ->
+                            db.collection("users").document(user)
+                                .update("progress", mapOf("moduleIndex" to 0, "pageIndex" to 0))
+                                .addOnCompleteListener {
+                                    context.startActivity(Intent(context, LessonActivity::class.java))
+                                }
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DE0FF))
+                ) {
+                    Text("Почати курс з початку", color = Color.Black, fontFamily = Rubik)
+                }
+
+                Button(
+                    onClick = {
+                        // просто продолжить
+                        context.startActivity(Intent(context, LessonActivity::class.java))
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DE0FF))
+                ) {
+                    Text("Продовжити курс", color = Color.Black, fontFamily = Rubik)
+                }
             }
         }
     }
