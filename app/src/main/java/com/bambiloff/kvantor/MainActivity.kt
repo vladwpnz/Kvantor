@@ -1,10 +1,13 @@
 package com.bambiloff.kvantor
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -26,31 +29,26 @@ import com.bambiloff.kvantor.ui.theme.KvantorTheme
 import com.bambiloff.kvantor.ui.theme.Rubik
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import androidx.compose.foundation.Image
+import com.google.firebase.firestore.SetOptions
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            KvantorTheme {
-                PythonCourseScreen()
-            }
-        }
+        setContent { KvantorTheme { PythonCourseScreen() } }
     }
 }
-
+@Suppress("DiscouragedApi")
 @Composable
 fun PythonCourseScreen() {
     val context = LocalContext.current
     val uid     = FirebaseAuth.getInstance().currentUser?.uid
     val db      = FirebaseFirestore.getInstance()
 
-    // Avatar
+    /* ---------- аватар ---------- */
     var avatarResId by remember { mutableStateOf(R.drawable.default_avatar) }
     LaunchedEffect(uid) {
         uid?.let { user ->
-            db.collection("users").document(user)
-                .get()
+            db.collection("users").document(user).get()
                 .addOnSuccessListener { doc ->
                     val name = doc.getString("avatarName") ?: "default_avatar"
                     val id   = context.resources.getIdentifier(name, "drawable", context.packageName)
@@ -80,13 +78,30 @@ fun PythonCourseScreen() {
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Верхняя строка с аватаром
+            /* ---------- верхній рядок: ← та аватар ---------- */
             Row(
                 Modifier
                     .fillMaxWidth()
                     .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.End
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment     = Alignment.CenterVertically
             ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_arrow_back), // створіть/vector «arrow_back»
+                    contentDescription = "Назад",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clickable {
+                            // повертаємося на екран вибору курсу
+                            context.startActivity(
+                                Intent(context, CourseSelectionActivity::class.java)
+                                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                            )
+                            (context as Activity).finish()
+                        }
+                )
+
                 Image(
                     painter = painterResource(id = avatarResId),
                     contentDescription = "Профіль",
@@ -99,7 +114,7 @@ fun PythonCourseScreen() {
                 )
             }
 
-            // Заголовок
+            /* ---------- заголовок ---------- */
             Text(
                 text       = "PYTHON",
                 fontSize   = 28.sp,
@@ -110,7 +125,7 @@ fun PythonCourseScreen() {
 
             Spacer(Modifier.height(24.dp))
 
-            // Список тем
+            /* ---------- список тем ---------- */
             topics.forEach { (title, description) ->
                 var expanded by remember { mutableStateOf(false) }
                 Column(
@@ -128,55 +143,61 @@ fun PythonCourseScreen() {
                         fontFamily = Rubik,
                         color      = Color.White
                     )
-                    AnimatedVisibility(visible = expanded) {
+                    AnimatedVisibility(expanded) {
                         Text(
-                            text       = description,
-                            fontSize   = 14.sp,
+                            text     = description,
+                            fontSize = 14.sp,
                             fontFamily = Rubik,
-                            color      = Color.LightGray,
-                            modifier   = Modifier.padding(top = 6.dp)
+                            color    = Color.LightGray,
+                            modifier = Modifier.padding(top = 6.dp)
                         )
                     }
                 }
             }
 
             Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.weight(1f))  // штовхаємо кнопки вниз
 
-            // Пустой Spacer, чтобы «затолкать» кнопки вниз, если экран большой
-            Spacer(Modifier.weight(1f))
-
-            // Кнопки внизу
+            /* ---------- кнопки ---------- */
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Button(
                     onClick = {
-                        // сбросить прогресс и стартовать сначала
                         uid?.let { user ->
-                            db.collection("users").document(user)
-                                .update("progress", mapOf("moduleIndex" to 0, "pageIndex" to 0))
-                                .addOnCompleteListener {
-                                    context.startActivity(Intent(context, LessonActivity::class.java))
-                                }
+                            db.collection("users").document(user).set(
+                                mapOf(
+                                    "progress" to mapOf(
+                                        "python" to mapOf("moduleIndex" to 0, "pageIndex" to 0)
+                                    )
+                                ),
+                                SetOptions.merge()
+                            ).addOnFailureListener { e ->
+                                Log.w("PY_BUTTON", "reset failed", e)
+                            }
                         }
+                        context.startActivity(
+                            Intent(context, LessonActivity::class.java)
+                                .putExtra("courseType", "python")
+                        )
                     },
                     modifier = Modifier.weight(1f),
+                    shape    = RoundedCornerShape(8.dp),
                     colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DE0FF))
-                ) {
-                    Text("Почати курс з початку", color = Color.Black, fontFamily = Rubik)
-                }
+                ) { Text("Почати курс з початку", color = Color.Black, fontFamily = Rubik) }
 
                 Button(
                     onClick = {
-                        // просто продолжить
-                        context.startActivity(Intent(context, LessonActivity::class.java))
+                        context.startActivity(
+                            Intent(context, LessonActivity::class.java)
+                                .putExtra("courseType", "python")
+                        )
                     },
                     modifier = Modifier.weight(1f),
+                    shape    = RoundedCornerShape(8.dp),
                     colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DE0FF))
-                ) {
-                    Text("Продовжити курс", color = Color.Black, fontFamily = Rubik)
-                }
+                ) { Text("Продовжити курс", color = Color.Black, fontFamily = Rubik) }
             }
         }
     }

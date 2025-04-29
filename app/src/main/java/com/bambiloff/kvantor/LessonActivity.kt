@@ -1,6 +1,5 @@
 package com.bambiloff.kvantor
 
-import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -15,30 +14,55 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bambiloff.kvantor.ui.*   // PageContainer, KvButton, KvBg, KvAccent, KvTextColor
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.launch
+
+/* ---------------------------------------------------------- */
+/*                       Activity                              */
+/* ---------------------------------------------------------- */
 
 class LessonActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // передаємо finish() щоб з кнопки «Меню» повертати назад
-        setContent { LessonScreen(onBackToMenu = { finish() }) }
+
+        // 1) дістаємо тип курсу: "python" (дефолт) або "javascript"
+        val courseType = intent.getStringExtra("courseType") ?: "python"
+
+        // 2) фабрика ViewModel-a з параметром
+        val factory = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                return LessonViewModel(courseType).apply { loadModules() } as T
+            }
+        }
+
+        // 3) рендеримо
+        setContent {
+            val vm: LessonViewModel = viewModel(factory = factory)
+
+            LessonScreen(
+                viewModel    = vm,
+                onBackToMenu = { finish() }
+            )
+        }
     }
 }
+
+/* ---------------------------------------------------------- */
+/*                       Composables                           */
+/* ---------------------------------------------------------- */
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LessonScreen(
-    viewModel: LessonViewModel = viewModel(),
+    viewModel: LessonViewModel,            // ! без default viewModel()
     onBackToMenu: () -> Unit
 ) {
-    val modules   by viewModel.modules.collectAsState()
-    val mIndex    by viewModel.currentModuleIndex.collectAsState()
-    val pIndex    by viewModel.currentPageIndex.collectAsState()
-
-    LaunchedEffect(Unit) { viewModel.loadModules() }
+    val modules by viewModel.modules.collectAsState()
+    val mIndex  by viewModel.currentModuleIndex.collectAsState()
+    val pIndex  by viewModel.currentPageIndex.collectAsState()
 
     Scaffold(
         topBar = {
@@ -75,6 +99,8 @@ fun LessonScreen(
         }
     }
 }
+
+/* ---------- решта твого коду без змін --------------------- */
 
 @Composable
 fun LessonModuleContent(
@@ -123,7 +149,7 @@ fun LessonModuleContent(
                     onClick = if (isLastModule) onBackToMenu else onNext
                 )
             }
-            null -> { /* нічого */ }
+            null -> {}
         }
 
         if (done && page !is Page.Final) {
@@ -150,7 +176,6 @@ fun CourseFinishedScreen(onBackToMenu: () -> Unit) {
         KvButton("Повернутися в меню", onClick = onBackToMenu)
     }
 }
-
 
 @Composable
 fun TestPage(test: Page.Test, onDone: () -> Unit) {
@@ -254,6 +279,3 @@ fun CodingTaskPage(task: Page.CodingTask, onAttempt: () -> Unit) {
         }
     }
 }
-
-
-

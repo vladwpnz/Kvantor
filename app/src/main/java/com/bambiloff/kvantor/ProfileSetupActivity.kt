@@ -26,76 +26,86 @@ import com.bambiloff.kvantor.ui.theme.Rubik
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.Timestamp
+import androidx.compose.ui.text.style.TextAlign
+
 
 class ProfileSetupActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         setContent {
             KvantorTheme {
                 ProfileSetupScreen { nickname, avatarName ->
-                    val userId = FirebaseAuth.getInstance().currentUser?.uid
-                    if (userId != null) {
-                        val userData = hashMapOf(
-                            "nickname" to nickname,
-                            "avatarName" to avatarName,  // Зберігаємо рядок
-                            "email" to FirebaseAuth.getInstance().currentUser?.email,
-                            "createdAt" to Timestamp.now()
-                        )
+                    val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return@ProfileSetupScreen
 
-                        FirebaseFirestore.getInstance()
-                            .collection("users")
-                            .document(userId)
-                            .set(userData)
-                            .addOnSuccessListener {
-                                val intent = Intent(this, WelcomeActivity::class.java)
-                                intent.putExtra("nickname", nickname)
-                                intent.putExtra("avatarName", avatarName)
-                                startActivity(intent)
-                                finish()
+                    val userData = hashMapOf(
+                        "nickname"   to nickname,
+                        "avatarName" to avatarName,          // зберігаємо назву ресурсу
+                        "email"      to FirebaseAuth.getInstance().currentUser?.email,
+                        "createdAt"  to Timestamp.now()
+                    )
+
+                    FirebaseFirestore.getInstance()
+                        .collection("users")
+                        .document(uid)
+                        .set(userData)
+                        .addOnSuccessListener {
+                            // ➜ одразу до вибору курсу
+                            val intent = Intent(this, CourseSelectionActivity::class.java).apply {
+                                putExtra("nickname",   nickname)
+                                putExtra("avatarName", avatarName)
                             }
-                            .addOnFailureListener {
-                                Toast.makeText(this, "Помилка при збереженні профілю", Toast.LENGTH_SHORT).show()
-                            }
-                    }
+                            startActivity(intent)
+                            finish()
+                        }
+                        .addOnFailureListener {
+                            Toast.makeText(this, "Помилка при збереженні профілю", Toast.LENGTH_SHORT).show()
+                        }
                 }
             }
         }
     }
 }
 
+/* ----------------------------------------------------------------- */
+/* UI                                                                */
+/* ----------------------------------------------------------------- */
+
 @Composable
 fun ProfileSetupScreen(
-    onContinue: (String, String) -> Unit
+    onContinue: (nickname: String, avatar: String) -> Unit
 ) {
     val context = LocalContext.current
-    var nickname by remember { mutableStateOf("") }
 
-    // Тепер зберігаємо назву ресурсу як рядок, наприклад "avatar1"
-    var selectedAvatarName by remember { mutableStateOf("avatar1") }
+    /* ---------------- state ---------------- */
+    var nickname by remember { mutableStateOf("") }
+    var selectedAvatar by remember { mutableStateOf("avatar1") }  // рядкова назва ресурсу
     var showAvatarOptions by remember { mutableStateOf(false) }
 
-    // Допоміжна функція для перетворення назви (avatar1) -> ID (R.drawable.avatar1)
-    fun getAvatarId(avatarName: String): Int {
-        return context.resources.getIdentifier(avatarName, "drawable", context.packageName)
-    }
+    fun drawableId(name: String): Int =
+        context.resources.getIdentifier(name, "drawable", context.packageName)
 
+    /* ---------------- layout ---------------- */
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF390D58))
             .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement  = Arrangement.Center
     ) {
+
         Text(
             text = "Привіт! Як тебе звати?",
             fontSize = 24.sp,
             color = Color.White,
             fontWeight = FontWeight.Bold,
-            fontFamily = Rubik
+            fontFamily = Rubik,
+            textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(Modifier.height(24.dp))
 
         OutlinedTextField(
             value = nickname,
@@ -105,7 +115,7 @@ fun ProfileSetupScreen(
             modifier = Modifier.fillMaxWidth(0.85f)
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(Modifier.height(24.dp))
 
         Text(
             text = "Виберіть аватар",
@@ -115,38 +125,32 @@ fun ProfileSetupScreen(
             modifier = Modifier.clickable { showAvatarOptions = !showAvatarOptions }
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(Modifier.height(12.dp))
 
-        // Поточний вибраний аватар
         Image(
-            painter = painterResource(id = getAvatarId(selectedAvatarName)),
+            painter = painterResource(id = drawableId(selectedAvatar)),
             contentDescription = "Avatar",
             modifier = Modifier
                 .size(80.dp)
                 .clip(CircleShape)
-                .clickable {
-                    showAvatarOptions = !showAvatarOptions
-                }
+                .clickable { showAvatarOptions = !showAvatarOptions }
         )
 
-        // Вибір аватарів
         if (showAvatarOptions) {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(Modifier.height(16.dp))
             Row(
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                val avatarNames = listOf("avatar1", "avatar2", "avatar3")
-                avatarNames.forEach { name ->
-                    val avatarId = getAvatarId(name)
+                listOf("avatar1", "avatar2", "avatar3").forEach { name ->
                     Image(
-                        painter = painterResource(id = avatarId),
-                        contentDescription = "Choose avatar",
+                        painter = painterResource(id = drawableId(name)),
+                        contentDescription = name,
                         modifier = Modifier
                             .size(60.dp)
                             .clip(CircleShape)
                             .clickable {
-                                selectedAvatarName = name
+                                selectedAvatar = name
                                 showAvatarOptions = false
                             }
                     )
@@ -154,15 +158,14 @@ fun ProfileSetupScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(Modifier.height(32.dp))
 
         Button(
             onClick = {
-                if (nickname.isNotBlank()) {
-                    // Повертаємо нікнейм і назву аватарки
-                    onContinue(nickname, selectedAvatarName)
-                } else {
+                if (nickname.isBlank()) {
                     Toast.makeText(context, "Введи нікнейм", Toast.LENGTH_SHORT).show()
+                } else {
+                    onContinue(nickname, selectedAvatar)
                 }
             },
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DE0FF)),
