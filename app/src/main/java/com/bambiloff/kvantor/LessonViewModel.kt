@@ -12,17 +12,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
-/**
- * ViewModel, що працює як для Python-курсу, так і для JavaScript-курсу.
- * Назва курсу передається в конструкторі (`courseType`).
- *
- *  – "python"      → читає колекцію "modules"
- *  – "javascript"  → читає колекцію "modules_js"
- *
- * Прогрес зберігається у полі `progress.{courseType}` у документі користувача.
- */
 class LessonViewModel(
-    private val courseType: String = "python"   // за замовчуванням – Python
+    private val courseType: String = "python"   // "python" або "javascript"
 ) : ViewModel() {
 
     /* ---------------- Firebase ---------------- */
@@ -44,20 +35,15 @@ class LessonViewModel(
             .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, null)
 
     /* ------------------------------------------------------------------------ */
-    /** Завантажує модулі для поточного курсу і одразу відновлює прогрес. */
+    /** Завантажує модулі і відновлює прогрес */
     fun loadModules() {
         viewModelScope.launch {
-            val collection = when (courseType) {
-                "javascript" -> "modules_js"
-                else          -> "modules"           // python
-            }
-
+            val collection = if (courseType == "javascript") "modules_js" else "modules"
             try {
                 val snapshot = db.collection(collection).get().await()
-                val loaded   = snapshot.documents
+                val loaded = snapshot.documents
                     .mapNotNull { it.toObject(ModuleDto::class.java)?.toModule() }
                     .sortedBy { it.id }
-
                 _modules.value = loaded
                 restoreProgress()
             } catch (e: Exception) {
@@ -67,91 +53,101 @@ class LessonViewModel(
     }
 
     /* ------------------------------------------------------------------------ */
-    /** Зберігає позицію користувача у Firestore в progress.{courseType}. */
+    /** Зберігає позицію користувача */
     private fun saveProgress() {
-        val user = auth.currentUser ?: return
-
-        val progressData = mapOf(
-            "moduleIndex" to _currentModuleIndex.value,
-            "pageIndex"   to _currentPageIndex.value
-        )
-
-        val data = mapOf(
-            "progress" to mapOf(courseType to progressData)
-        )
-
-        db.collection("users")
-            .document(user.uid)
-            .set(data, SetOptions.merge())
-            .addOnFailureListener { e -> println("❌ Save error: ${e.message}") }
+        auth.currentUser?.uid?.let { uid ->
+            val progressData = mapOf(
+                "moduleIndex" to _currentModuleIndex.value,
+                "pageIndex"   to _currentPageIndex.value
+            )
+            val data = mapOf("progress" to mapOf(courseType to progressData))
+            db.collection("users")
+                .document(uid)
+                .set(data, SetOptions.merge())
+                .addOnFailureListener { e -> println("❌ Save error: ${e.message}") }
+        }
     }
 
     /* ------------------------------------------------------------------------ */
-    /** Відновлює позицію користувача з progress.{courseType}. */
+    /** Відновлює позицію користувача */
     private fun restoreProgress() {
-        val user = auth.currentUser ?: return
         viewModelScope.launch {
-            try {
-                val doc = db.collection("users").document(user.uid).get().await()
-
-                @Suppress("UNCHECKED_CAST")
-                val progressRoot = doc.get("progress") as? Map<String, Map<String, Long>>
-                val thisCourse   = progressRoot?.get(courseType)
-
-                val mIdx = (thisCourse?.get("moduleIndex") ?: 0L).toInt()
-                val pIdx = (thisCourse?.get("pageIndex")   ?: 0L).toInt()
-
-                // clamp module index
-                val maxModule = _modules.value.lastIndex.coerceAtLeast(0)
-                _currentModuleIndex.value = mIdx.coerceIn(0, maxModule)
-
-                // clamp page index
-                val pageCount = _modules.value.getOrNull(_currentModuleIndex.value)?.pages?.size ?: 1
-                val maxPage   = (pageCount - 1).coerceAtLeast(0)
-                _currentPageIndex.value = pIdx.coerceIn(0, maxPage)
-
-                println("📥 Progress restored ($courseType): module=$mIdx page=$pIdx")
-            } catch (e: Exception) {
-                e.printStackTrace()
+            auth.currentUser?.uid?.let { uid ->
+                try {
+                    val doc = db.collection("users").document(uid).get().await()
+                    @Suppress("UNCHECKED_CAST")
+                    val root = doc.get("progress") as? Map<String, Map<String, Long>>
+                    val course = root?.get(courseType)
+                    val mIdx = (course?.get("moduleIndex") ?: 0L).toInt()
+                    val pIdx = (course?.get("pageIndex")   ?: 0L).toInt()
+                    val maxModule = _modules.value.lastIndex.coerceAtLeast(0)
+                    _currentModuleIndex.value = mIdx.coerceIn(0, maxModule)
+                    val pageCount = _modules.value
+                        .getOrNull(_currentModuleIndex.value)
+                        ?.pages
+                        ?.size ?: 1
+                    _currentPageIndex.value = pIdx.coerceIn(0, pageCount - 1)
+                    println("📥 Restored ($courseType): module=$mIdx page=$pIdx")
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         }
     }
 
     /* ------------------------------------------------------------------------ */
-    /** Позначає модуль завершеним і оновлює поле completedModules. */
-
-    @Suppress("UNCHECKED_CAST")
+    /** Позначає модуль завершеним */
     private fun markModuleCompleted(moduleId: String) {
-        val user = auth.currentUser ?: return
-        val ref  = db.collection("users").document(user.uid)
-
-        db.runTransaction { tx ->
-            val done = tx.get(ref).get("completedModules") as? List<String> ?: emptyList()
-            if (moduleId !in done) tx.update(ref, "completedModules", done + moduleId)
-        }.addOnSuccessListener {
-            println("✅ Module completed: $moduleId ($courseType)")
+        auth.currentUser?.uid?.let { uid ->
+            val ref = db.collection("users").document(uid)
+            db.runTransaction { tx ->
+                val done = tx.get(ref).get("completedModules") as? List<String> ?: emptyList()
+                if (moduleId !in done) {
+                    tx.update(ref, "completedModules", done + moduleId)
+                }
+            }.addOnSuccessListener {
+                println("✅ Module completed: $moduleId ($courseType)")
+            }
         }
     }
 
     /* ------------------------------------------------------------------------ */
     /**
-     * Кнопка «Далі»:
-     *  – переходить на наступну сторінку, якщо ще є;
-     *  – інакше позначає модуль завершеним і переходить до наступного модуля.
-     *  Після кожного кроку прогрес зберігається.
+     * Натиск “Далі”:
+     * – переходить на наступну сторінку, або
+     * – завершує модуль, або
+     * – при завершенні останнього модуля — розблоковує ачівку курсу.
      */
     fun next() {
-        val mod = currentModule.value ?: return
+        viewModelScope.launch {
+            val mod = currentModule.value ?: return@launch
+            val lastModuleIndex = _modules.value.lastIndex
 
-        if (_currentPageIndex.value < mod.pages.lastIndex) {
-            _currentPageIndex.value += 1
-        } else {
-            markModuleCompleted(mod.id)
-            if (_currentModuleIndex.value < _modules.value.lastIndex) {
-                _currentModuleIndex.value += 1
-                _currentPageIndex.value = 0
+            if (_currentPageIndex.value < mod.pages.lastIndex) {
+                // рухаємося по сторінках у межах модуля
+                _currentPageIndex.value += 1
+            } else {
+                // модуль завершено
+                markModuleCompleted(mod.id)
+
+                if (_currentModuleIndex.value < lastModuleIndex) {
+                    // переходимо до наступного модуля
+                    _currentModuleIndex.value += 1
+                    _currentPageIndex.value = 0
+                } else {
+                    // курс завершено — розблоковуємо відповідну ачівку
+                    auth.currentUser?.uid?.let { uid ->
+                        when (courseType) {
+                            "python"     -> AchievementManager.unlockAchievement(uid, "PY_MASTER")
+                            "javascript" -> AchievementManager.unlockAchievement(uid, "JS_SAMURAI")
+                        }
+                        println("🏆 Course achievement unlocked for $courseType")
+                    }
+                }
             }
+
+            // зберігаємо прогрес (індекси)
+            saveProgress()
         }
-        saveProgress()
     }
 }

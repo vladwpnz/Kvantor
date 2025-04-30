@@ -3,29 +3,29 @@ package com.bambiloff.kvantor
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextAlign
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bambiloff.kvantor.ui.*    // PageContainer, KvButton, KvBg, KvAccent, KvTextColor
-import kotlinx.coroutines.launch
+
 
 class LessonActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         val courseType = intent.getStringExtra("courseType") ?: "python"
-
         val factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
@@ -39,15 +39,26 @@ class LessonActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun LessonScreen(
     viewModel: LessonViewModel,
     onBackToMenu: () -> Unit
 ) {
-    val modules by viewModel.modules.collectAsState()
-    val mIndex  by viewModel.currentModuleIndex.collectAsState()
-    val pIndex  by viewModel.currentPageIndex.collectAsState()
+    val modules        by viewModel.modules.collectAsState()
+    val currentModIdx  by viewModel.currentModuleIndex.collectAsState()
+    val currentPageIdx by viewModel.currentPageIndex.collectAsState()
+
+    // Загальна кількість сторінок у поточному модулі
+    val pageCount = modules
+        .getOrNull(currentModIdx)
+        ?.pages
+        ?.size
+        ?: 1
+
+    // Від 0f до 1f
+    val progress = ((currentPageIdx + 1).coerceAtMost(pageCount))
+        .toFloat() / pageCount.toFloat()
 
     Scaffold(
         topBar = {
@@ -61,19 +72,40 @@ fun LessonScreen(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = KvBg)
             )
         },
+        // Нижній бар із лінією прогресу
+        bottomBar = {
+            Column {
+                HorizontalDivider(
+                    color = KvAccent.copy(alpha = 0.3f),
+                    thickness = 1.dp
+                )
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp),
+                    trackColor = KvAccent.copy(alpha = 0.1f),
+                    color      = KvAccent
+                )
+            }
+        },
         containerColor = KvBg
     ) { padding ->
         PageContainer(Modifier.padding(padding)) {
             when {
-                modules.isEmpty() -> CircularProgressIndicator(color = KvAccent)
-                mIndex < modules.size ->
-                    LessonModuleContent(
-                        module       = modules[mIndex],
-                        pageIndex    = pIndex,
-                        isLastModule = mIndex == modules.lastIndex,
-                        onNext       = viewModel::next,
-                        onBackToMenu = onBackToMenu
-                    )
+                modules.isEmpty() -> Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = KvAccent)
+                }
+                currentModIdx < modules.size -> LessonModuleContent(
+                    module       = modules[currentModIdx],
+                    pageIndex    = currentPageIdx,
+                    isLastModule = currentModIdx == modules.lastIndex,
+                    onNext       = viewModel::next,
+                    onBackToMenu = onBackToMenu
+                )
                 else -> CourseFinishedScreen(onBackToMenu)
             }
         }
@@ -100,7 +132,7 @@ fun LessonModuleContent(
         verticalArrangement   = Arrangement.Center
     ) {
         Text(
-            "Модуль: ${module.title}",
+            text      = "Модуль: ${module.title}",
             style     = MaterialTheme.typography.titleLarge,
             color     = KvTextColor,
             textAlign = TextAlign.Center
@@ -108,25 +140,20 @@ fun LessonModuleContent(
         Spacer(Modifier.height(32.dp))
 
         when (page) {
-            is Page.Theory ->
-                Text(page.text, color = KvTextColor, textAlign = TextAlign.Center).also { done = true }
-
-            is Page.Test ->
-                TestPage(page) { done = true }
-
-            is Page.CodingTask ->
-                CodingTaskView(page) { done = true }
-
-            is Page.Final -> {
+            is Page.Theory      -> Text(page.text, color = KvTextColor, textAlign = TextAlign.Center)
+                .also { done = true }
+            is Page.Test        -> TestPage(page) { done = true }
+            is Page.CodingTask  -> CodingTaskView(page) { done = true }
+            is Page.Final       -> {
                 Text(page.message, color = KvTextColor, textAlign = TextAlign.Center)
                 done = true
                 Spacer(Modifier.height(32.dp))
                 KvButton(
-                    text = if (isLastModule) "Повернутися в меню" else "До наступного модуля",
+                    text    = if (isLastModule) "Повернутися в меню" else "До наступного модуля",
                     onClick = if (isLastModule) onBackToMenu else onNext
                 )
             }
-            null -> {}
+            null                -> { }
         }
 
         if (done && page !is Page.Final) {
@@ -144,7 +171,7 @@ fun CourseFinishedScreen(onBackToMenu: () -> Unit) {
         verticalArrangement  = Arrangement.Center
     ) {
         Text(
-            "🎉 Вітаємо!\nВи завершили всі модулі.",
+            text      = "🎉 Вітаємо!\nВи завершили всі модулі.",
             style     = MaterialTheme.typography.titleLarge,
             color     = KvTextColor,
             textAlign = TextAlign.Center
@@ -187,7 +214,7 @@ fun TestPage(test: Page.Test, onDone: () -> Unit) {
     result?.let {
         Spacer(Modifier.height(16.dp))
         Text(
-            if (it) "✅ Правильно" else "❌ Неправильно",
+            text      = if (it) "✅ Правильно" else "❌ Неправильно",
             color     = if (it) KvAccent else KvAccent.copy(alpha = .7f),
             textAlign = TextAlign.Center
         )

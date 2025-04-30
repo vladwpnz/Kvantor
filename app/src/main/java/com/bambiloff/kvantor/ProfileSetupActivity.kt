@@ -5,12 +5,20 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.lifecycleScope
+import com.bambiloff.kvantor.ui.theme.KvantorTheme
+import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,14 +27,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.bambiloff.kvantor.ui.theme.KvantorTheme
 import com.bambiloff.kvantor.ui.theme.Rubik
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.Timestamp
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material3.LocalTextStyle
+
 
 
 class ProfileSetupActivity : ComponentActivity() {
@@ -37,40 +43,48 @@ class ProfileSetupActivity : ComponentActivity() {
         setContent {
             KvantorTheme {
                 ProfileSetupScreen { nickname, avatarName ->
-                    val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return@ProfileSetupScreen
+                    val uid = FirebaseAuth.getInstance().currentUser?.uid
+                    if (uid == null) {
+                        Toast.makeText(this, "Користувача не знайдено", Toast.LENGTH_SHORT).show()
+                        return@ProfileSetupScreen
+                    }
 
-                    val userData = hashMapOf(
-                        "nickname"   to nickname,
-                        "avatarName" to avatarName,          // зберігаємо назву ресурсу
-                        "email"      to FirebaseAuth.getInstance().currentUser?.email,
-                        "createdAt"  to Timestamp.now()
-                    )
+                    lifecycleScope.launch {
+                        try {
+                            // Створюємо профіль + ініціалізуємо ачівки
+                            UserBootstrapper.createUserSkeleton(uid, nickname, avatarName)
 
-                    FirebaseFirestore.getInstance()
-                        .collection("users")
-                        .document(uid)
-                        .set(userData)
-                        .addOnSuccessListener {
-                            // ➜ одразу до вибору курсу
-                            val intent = Intent(this, CourseSelectionActivity::class.java).apply {
-                                putExtra("nickname",   nickname)
-                                putExtra("avatarName", avatarName)
-                            }
-                            startActivity(intent)
+                            // Сповіщення про першу ачівку
+                            Toast.makeText(
+                                this@ProfileSetupActivity,
+                                "🥳 Відкрито ачівку: «Перший крок»",
+                                Toast.LENGTH_SHORT
+                            ).show()
+
+                            // Переходимо до вибору курсу
+                            startActivity(
+                                Intent(
+                                    this@ProfileSetupActivity,
+                                    CourseSelectionActivity::class.java
+                                ).apply {
+                                    putExtra("nickname", nickname)
+                                    putExtra("avatarName", avatarName)
+                                }
+                            )
                             finish()
+                        } catch (e: Exception) {
+                            Toast.makeText(
+                                this@ProfileSetupActivity,
+                                "Помилка збереження профілю: ${e.message}",
+                                Toast.LENGTH_LONG
+                            ).show()
                         }
-                        .addOnFailureListener {
-                            Toast.makeText(this, "Помилка при збереженні профілю", Toast.LENGTH_SHORT).show()
-                        }
+                    }
                 }
             }
         }
     }
 }
-
-/* ----------------------------------------------------------------- */
-/* UI                                                                */
-/* ----------------------------------------------------------------- */
 
 @Composable
 fun ProfileSetupScreen(
@@ -78,24 +92,21 @@ fun ProfileSetupScreen(
 ) {
     val context = LocalContext.current
 
-    /* ---------------- state ---------------- */
     var nickname by remember { mutableStateOf("") }
-    var selectedAvatar by remember { mutableStateOf("avatar1") }  // рядкова назва ресурсу
+    var selectedAvatar by remember { mutableStateOf("avatar1") }
     var showAvatarOptions by remember { mutableStateOf(false) }
 
     fun drawableId(name: String): Int =
         context.resources.getIdentifier(name, "drawable", context.packageName)
 
-    /* ---------------- layout ---------------- */
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF390D58))
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement  = Arrangement.Center
+        verticalArrangement = Arrangement.Center
     ) {
-
         Text(
             text = "Привіт! Як тебе звати?",
             fontSize = 24.sp,
