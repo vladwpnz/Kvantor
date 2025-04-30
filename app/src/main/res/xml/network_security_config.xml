@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+
+    <!-- Дозволяємо HTTP-з’єднання тільки до 10.0.2.2 (localhost хоста) -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+
+    <!-- Для решти доменів HTTP заборонено (залишається лише HTTPS) -->
+    <base-config cleartextTrafficPermitted="false" />
+
+</network-security-config>

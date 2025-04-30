@@ -17,47 +17,32 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.bambiloff.kvantor.ui.*   // PageContainer, KvButton, KvBg, KvAccent, KvTextColor
-
-/* ---------------------------------------------------------- */
-/*                       Activity                              */
-/* ---------------------------------------------------------- */
+import com.bambiloff.kvantor.ui.*    // PageContainer, KvButton, KvBg, KvAccent, KvTextColor
+import kotlinx.coroutines.launch
 
 class LessonActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 1) дістаємо тип курсу: "python" (дефолт) або "javascript"
         val courseType = intent.getStringExtra("courseType") ?: "python"
 
-        // 2) фабрика ViewModel-a з параметром
         val factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return LessonViewModel(courseType).apply { loadModules() } as T
-            }
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                LessonViewModel(courseType).apply { loadModules() } as T
         }
 
-        // 3) рендеримо
         setContent {
             val vm: LessonViewModel = viewModel(factory = factory)
-
-            LessonScreen(
-                viewModel    = vm,
-                onBackToMenu = { finish() }
-            )
+            LessonScreen(vm) { finish() }
         }
     }
 }
 
-/* ---------------------------------------------------------- */
-/*                       Composables                           */
-/* ---------------------------------------------------------- */
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LessonScreen(
-    viewModel: LessonViewModel,            // ! без default viewModel()
+    viewModel: LessonViewModel,
     onBackToMenu: () -> Unit
 ) {
     val modules by viewModel.modules.collectAsState()
@@ -80,10 +65,8 @@ fun LessonScreen(
     ) { padding ->
         PageContainer(Modifier.padding(padding)) {
             when {
-                modules.isEmpty() -> {
-                    CircularProgressIndicator(color = KvAccent)
-                }
-                mIndex < modules.size -> {
+                modules.isEmpty() -> CircularProgressIndicator(color = KvAccent)
+                mIndex < modules.size ->
                     LessonModuleContent(
                         module       = modules[mIndex],
                         pageIndex    = pIndex,
@@ -91,16 +74,11 @@ fun LessonScreen(
                         onNext       = viewModel::next,
                         onBackToMenu = onBackToMenu
                     )
-                }
-                else -> {
-                    CourseFinishedScreen(onBackToMenu)
-                }
+                else -> CourseFinishedScreen(onBackToMenu)
             }
         }
     }
 }
-
-/* ---------- решта твого коду без змін --------------------- */
 
 @Composable
 fun LessonModuleContent(
@@ -119,7 +97,7 @@ fun LessonModuleContent(
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement   = Arrangement.Center
     ) {
         Text(
             "Модуль: ${module.title}",
@@ -130,16 +108,15 @@ fun LessonModuleContent(
         Spacer(Modifier.height(32.dp))
 
         when (page) {
-            is Page.Theory -> {
-                Text(page.text, color = KvTextColor, textAlign = TextAlign.Center)
-                done = true
-            }
-            is Page.Test -> {
+            is Page.Theory ->
+                Text(page.text, color = KvTextColor, textAlign = TextAlign.Center).also { done = true }
+
+            is Page.Test ->
                 TestPage(page) { done = true }
-            }
-            is Page.CodingTask -> {
-                CodingTaskPage(page) { done = true }
-            }
+
+            is Page.CodingTask ->
+                CodingTaskView(page) { done = true }
+
             is Page.Final -> {
                 Text(page.message, color = KvTextColor, textAlign = TextAlign.Center)
                 done = true
@@ -162,15 +139,15 @@ fun LessonModuleContent(
 @Composable
 fun CourseFinishedScreen(onBackToMenu: () -> Unit) {
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier             = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement  = Arrangement.Center
     ) {
         Text(
             "🎉 Вітаємо!\nВи завершили всі модулі.",
+            style     = MaterialTheme.typography.titleLarge,
             color     = KvTextColor,
-            textAlign = TextAlign.Center,
-            style     = MaterialTheme.typography.titleLarge
+            textAlign = TextAlign.Center
         )
         Spacer(Modifier.height(32.dp))
         KvButton("Повернутися в меню", onClick = onBackToMenu)
@@ -189,8 +166,8 @@ fun TestPage(test: Page.Test, onDone: () -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             RadioButton(
                 selected = selected == i,
-                onClick = { selected = i; result = null },
-                colors = RadioButtonDefaults.colors(
+                onClick  = { selected = i; result = null },
+                colors   = RadioButtonDefaults.colors(
                     selectedColor   = KvTextColor,
                     unselectedColor = KvTextColor
                 )
@@ -211,71 +188,8 @@ fun TestPage(test: Page.Test, onDone: () -> Unit) {
         Spacer(Modifier.height(16.dp))
         Text(
             if (it) "✅ Правильно" else "❌ Неправильно",
-            color     = KvTextColor,
+            color     = if (it) KvAccent else KvAccent.copy(alpha = .7f),
             textAlign = TextAlign.Center
         )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun CodingTaskPage(task: Page.CodingTask, onAttempt: () -> Unit) {
-    val focus = LocalFocusManager.current
-    var userCode    by remember(task) { mutableStateOf("") }
-    var checkResult by remember(task) { mutableStateOf<Boolean?>(null) }
-
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .imePadding()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(task.description, color = KvTextColor, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(24.dp))
-
-        OutlinedTextField(
-            value = userCode,
-            onValueChange = { userCode = it },
-            label    = { Text("Ваш код") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(150.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor   = KvAccent,
-                unfocusedBorderColor = KvAccent.copy(alpha = .4f),
-                cursorColor          = KvAccent,
-                focusedLabelColor    = KvTextColor,
-                unfocusedLabelColor  = KvTextColor.copy(alpha = .6f),
-                focusedTextColor     = KvTextColor,
-                unfocusedTextColor   = KvTextColor
-            ),
-            keyboardActions = KeyboardActions { focus.clearFocus() }
-        )
-
-        Spacer(Modifier.height(24.dp))
-
-        KvButton("Надіслати") {
-            focus.clearFocus()
-            checkResult = userCode.trim() == task.expectedCode.trim()
-            onAttempt()
-        }
-
-        checkResult?.let { ok ->
-            Spacer(Modifier.height(16.dp))
-            if (ok) {
-                Text("✅ Відповідь правильна", color = KvTextColor)
-            } else {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("❌ Спробуй ще", color = KvTextColor)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Приклад розв’язку:\n${task.expectedCode}",
-                        color     = KvTextColor,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
-        }
     }
 }
