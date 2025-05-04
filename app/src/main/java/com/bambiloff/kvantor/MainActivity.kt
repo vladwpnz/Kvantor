@@ -7,19 +7,27 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -34,42 +42,49 @@ import com.google.firebase.firestore.SetOptions
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { KvantorTheme { PythonCourseScreen() } }
+        setContent {
+            var isDarkTheme by remember { mutableStateOf(true) }
+
+            KvantorTheme(darkTheme = isDarkTheme) {
+                PythonCourseScreen(
+                    isDarkTheme   = isDarkTheme,
+                    onToggleTheme = { isDarkTheme = it }
+                )
+            }
+        }
     }
 }
+
 @Suppress("DiscouragedApi")
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PythonCourseScreen() {
+fun PythonCourseScreen(
+    isDarkTheme: Boolean,
+    onToggleTheme: (Boolean) -> Unit
+) {
     val context = LocalContext.current
     val uid     = FirebaseAuth.getInstance().currentUser?.uid
     val db      = FirebaseFirestore.getInstance()
+    val cs      = MaterialTheme.colorScheme
 
-    /* ---------- аватар ---------- */
     var avatarResId by remember { mutableStateOf(R.drawable.default_avatar) }
     LaunchedEffect(uid) {
         uid?.let { user ->
             db.collection("users").document(user).get()
                 .addOnSuccessListener { doc ->
                     val name = doc.getString("avatarName") ?: "default_avatar"
-                    val id   = context.resources.getIdentifier(name, "drawable", context.packageName)
+                    val id   = context.resources.getIdentifier(
+                        name, "drawable", context.packageName
+                    )
                     avatarResId = if (id != 0) id else R.drawable.default_avatar
                 }
         }
     }
 
-    val topics = listOf(
-        "Вступ" to "Ознайомлення з Python. Напишемо першу програму.",
-        "Змінні" to "Що таке змінні, типи даних, як оголошувати.",
-        "Цикли" to "Цикли for та while, приклади з практики.",
-        "Умови" to "if, else, elif — логіка умов.",
-        "Функції" to "Як створювати функції, передавати параметри.",
-        "Списки та словники" to "Основи списків та словників у Python."
-    )
-
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color(0xFF390D58))
+            .background(cs.background)
     ) {
         Column(
             Modifier
@@ -78,7 +93,6 @@ fun PythonCourseScreen() {
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            /* ---------- верхній рядок: ← та аватар ---------- */
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -87,13 +101,12 @@ fun PythonCourseScreen() {
                 verticalAlignment     = Alignment.CenterVertically
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_arrow_back), // створіть/vector «arrow_back»
+                    painter = painterResource(R.drawable.ic_arrow_back),
                     contentDescription = "Назад",
-                    tint = Color.White,
+                    tint = cs.onBackground,
                     modifier = Modifier
                         .size(28.dp)
                         .clickable {
-                            // повертаємося на екран вибору курсу
                             context.startActivity(
                                 Intent(context, CourseSelectionActivity::class.java)
                                     .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -102,6 +115,17 @@ fun PythonCourseScreen() {
                         }
                 )
 
+                IconToggleButton(
+                    checked = isDarkTheme,
+                    onCheckedChange = onToggleTheme
+                ) {
+                    Icon(
+                        imageVector = if (isDarkTheme) Icons.Default.DarkMode else Icons.Default.LightMode,
+                        contentDescription = null,
+                        tint = cs.primary
+                    )
+                }
+
                 Image(
                     painter = painterResource(id = avatarResId),
                     contentDescription = "Профіль",
@@ -109,30 +133,41 @@ fun PythonCourseScreen() {
                         .size(36.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .clickable {
-                            context.startActivity(Intent(context, ProfileActivity::class.java))
+                            context.startActivity(
+                                Intent(context, ProfileActivity::class.java)
+                            )
                         }
                 )
             }
 
-            /* ---------- заголовок ---------- */
             Text(
                 text       = "PYTHON",
                 fontSize   = 28.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = Rubik,
-                color      = Color(0xFF1DE0FF)
+                color      = cs.primary
             )
 
             Spacer(Modifier.height(24.dp))
 
-            /* ---------- список тем ---------- */
+            // Список тем з фоном 0xFF8C52FF
+            val topics = listOf(
+                "Вступ" to "Ознайомлення з Python. Напишемо першу програму.",
+                "Змінні" to "Що таке змінні, типи даних, як оголошувати.",
+                "Цикли" to "Цикли for та while, приклади з практики.",
+                "Умови" to "if, else, elif — логіка умов.",
+                "Функції" to "Як створювати функції, передавати параметри.",
+                "Списки та словники" to "Основи списків та словників у Python."
+            )
+
             topics.forEach { (title, description) ->
                 var expanded by remember { mutableStateOf(false) }
                 Column(
                     Modifier
                         .fillMaxWidth()
                         .padding(vertical = 4.dp)
-                        .background(Color(0xFF512C77), RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(cs.primary)               // тепер #8C52FF
                         .clickable { expanded = !expanded }
                         .padding(horizontal = 16.dp, vertical = 10.dp)
                 ) {
@@ -141,63 +176,80 @@ fun PythonCourseScreen() {
                         fontSize   = 16.sp,
                         fontWeight = FontWeight.Medium,
                         fontFamily = Rubik,
-                        color      = Color.White
+                        color      = cs.onPrimary             // білий текст
                     )
                     AnimatedVisibility(expanded) {
                         Text(
-                            text     = description,
-                            fontSize = 14.sp,
+                            text       = description,
+                            fontSize   = 14.sp,
                             fontFamily = Rubik,
-                            color    = Color.LightGray,
-                            modifier = Modifier.padding(top = 6.dp)
+                            color      = cs.onPrimary.copy(alpha = .9f),
+                            modifier   = Modifier.padding(top = 6.dp)
                         )
                     }
                 }
             }
 
             Spacer(Modifier.height(32.dp))
-            Spacer(Modifier.weight(1f))  // штовхаємо кнопки вниз
+            Spacer(Modifier.weight(1f))
 
-            /* ---------- кнопки ---------- */
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                val interaction = remember { MutableInteractionSource() }
+                val pressed by interaction.collectIsPressedAsState()
+                val scale by animateFloatAsState(if (pressed) 0.95f else 1f)
+
                 Button(
                     onClick = {
                         uid?.let { user ->
-                            db.collection("users").document(user).set(
-                                mapOf(
-                                    "progress" to mapOf(
-                                        "python" to mapOf("moduleIndex" to 0, "pageIndex" to 0)
-                                    )
-                                ),
-                                SetOptions.merge()
-                            ).addOnFailureListener { e ->
-                                Log.w("PY_BUTTON", "reset failed", e)
-                            }
+                            db.collection("users")
+                                .document(user)
+                                .set(
+                                    mapOf("progress" to mapOf("python" to mapOf("moduleIndex" to 0, "pageIndex" to 0))),
+                                    SetOptions.merge()
+                                )
                         }
                         context.startActivity(
-                            Intent(context, LessonActivity::class.java)
-                                .putExtra("courseType", "python")
+                            Intent(context, LessonActivity::class.java).putExtra("courseType", "python")
                         )
                     },
-                    modifier = Modifier.weight(1f),
-                    shape    = RoundedCornerShape(8.dp),
-                    colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DE0FF))
-                ) { Text("Почати курс з початку", color = Color.Black, fontFamily = Rubik) }
+                    modifier          = Modifier
+                        .weight(1f)
+                        .graphicsLayer { scaleX = scale; scaleY = scale },
+                    interactionSource = interaction,
+                    shape             = RoundedCornerShape(8.dp),
+                    colors            = ButtonDefaults.buttonColors(
+                        containerColor = cs.primary,
+                        contentColor   = cs.onPrimary
+                    )
+                ) {
+                    Text("Почати курс з початку", fontFamily = Rubik)
+                }
+
+                val interaction2 = remember { MutableInteractionSource() }
+                val pressed2 by interaction2.collectIsPressedAsState()
+                val scale2 by animateFloatAsState(if (pressed2) 0.95f else 1f)
 
                 Button(
                     onClick = {
                         context.startActivity(
-                            Intent(context, LessonActivity::class.java)
-                                .putExtra("courseType", "python")
+                            Intent(context, LessonActivity::class.java).putExtra("courseType", "python")
                         )
                     },
-                    modifier = Modifier.weight(1f),
-                    shape    = RoundedCornerShape(8.dp),
-                    colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DE0FF))
-                ) { Text("Продовжити курс", color = Color.Black, fontFamily = Rubik) }
+                    modifier          = Modifier
+                        .weight(1f)
+                        .graphicsLayer { scaleX = scale2; scaleY = scale2 },
+                    interactionSource = interaction2,
+                    shape             = RoundedCornerShape(8.dp),
+                    colors            = ButtonDefaults.buttonColors(
+                        containerColor = cs.primary,
+                        contentColor   = cs.onPrimary
+                    )
+                ) {
+                    Text("Продовжити курс", fontFamily = Rubik)
+                }
             }
         }
     }

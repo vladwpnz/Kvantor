@@ -8,14 +8,12 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
-import java.net.SocketTimeoutException    // <- імпорт для таймауту
+import java.net.SocketTimeoutException
+import androidx.compose.ui.graphics.Color   // ← додайте це
 
-/**
- * Окремий Composable для code-challenge з підключенням до Ollama.
- *
- * @param task       – дані сторінки (опис + очікуваний код)
- * @param onSubmitted – callback у батьківський екран: true/false
- */
+
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CodingTaskView(
     task: Page.CodingTask,
@@ -24,82 +22,98 @@ fun CodingTaskView(
     val api       = remember { OllamaApi.create() }
     val coroutine = rememberCoroutineScope()
 
-    // менеджери для клавіатури та фокусу
-    val focusManager = LocalFocusManager.current
+    val focusManager       = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    var userCode   by remember(task) { mutableStateOf("") }
-    var submitted  by remember(task) { mutableStateOf(false) }
-    var isCorrect  by remember(task) { mutableStateOf<Boolean?>(null) }
-    var aiReview   by remember(task) { mutableStateOf<String?>(null) }
-    var isLoading  by remember(task) { mutableStateOf(false) }
-    var error      by remember(task) { mutableStateOf<String?>(null) }
+    var userCode  by remember(task) { mutableStateOf("") }
+    var submitted by remember(task) { mutableStateOf(false) }
+    var isCorrect by remember(task) { mutableStateOf<Boolean?>(null) }
+    var aiReview  by remember(task) { mutableStateOf<String?>(null) }
+    var isLoading by remember(task) { mutableStateOf(false) }
+    var error     by remember(task) { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp)
     ) {
-        Text("Завдання: ${task.description}")
-        Spacer(Modifier.height(8.dp))
-
-        OutlinedTextField(
-            value = userCode,
-            onValueChange = { userCode = it },
-            label = { Text("Ваш код") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(150.dp)
+        // ── Завдання ────────────────────────────────────────────────────────────────
+        Text(
+            text  = "Завдання: ${task.description}",
+            color = KvTextColor
         )
 
         Spacer(Modifier.height(8.dp))
 
+        // ── Поле вводу ─────────────────────────────────────────────────────────────
+        OutlinedTextField(
+            value = userCode,
+            onValueChange = { userCode = it },
+            label = { Text("Ваш код", color = KvTextColor.copy(alpha = .6f)) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(150.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor         = KvTextColor,
+                unfocusedTextColor       = KvTextColor,
+                cursorColor              = KvAccent,
+                focusedBorderColor       = KvAccent,
+                unfocusedBorderColor     = KvTextColor.copy(alpha = .5f),
+                focusedLabelColor        = KvAccent,
+                unfocusedLabelColor      = KvTextColor.copy(alpha = .6f),
+                focusedPlaceholderColor  = KvTextColor.copy(alpha = .4f),
+                unfocusedPlaceholderColor= KvTextColor.copy(alpha = .4f),
+                focusedContainerColor    = Color.Transparent,
+                unfocusedContainerColor  = Color.Transparent
+            )
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        // ── Кнопка "Надіслати" ───────────────────────────────────────────────────
         Button(
             onClick = {
-                // ховаємо клавіатуру і втрачаємо фокус
                 focusManager.clearFocus()
                 keyboardController?.hide()
 
-                // перевіряємо базову правильність
                 submitted = true
                 isCorrect = userCode.trim() == task.expectedCode.trim()
                 onSubmitted(isCorrect == true)
 
-                // готуємо новий запит
                 aiReview = null
-                error = null
+                error    = null
 
                 coroutine.launch {
                     isLoading = true
                     try {
-                        val request = CodeReviewRequest(
-                            task = task.description,
-                            code = userCode
+                        val response = api.reviewCode(
+                            CodeReviewRequest(task.description, userCode)
                         )
-                        val response = api.reviewCode(request)
                         aiReview = response.response
-
                     } catch (e: SocketTimeoutException) {
-                        // окрема обробка таймауту
-                        error = "⚠️ Таймаут: AI-рев'ю не отримано, спробуйте пізніше."
+                        error = "⚠️ Таймаут: AI‑рев'ю не отримано, спробуйте пізніше."
                     } catch (e: Exception) {
-                        // всі інші помилки
-                        error = "❗ Помилка AI-рев'ю: ${e.localizedMessage}"
+                        error = "❗ Помилка AI‑рев'ю: ${e.localizedMessage}"
                     } finally {
                         isLoading = false
                     }
                 }
             },
-            enabled = userCode.isNotBlank() && (!isLoading)
+            enabled = userCode.isNotBlank() && !isLoading,
+            colors  = ButtonDefaults.buttonColors(
+                containerColor = KvAccent,
+                contentColor   = KvTextColor
+            )
         ) {
             Text("Надіслати")
         }
 
         Spacer(Modifier.height(16.dp))
 
+        // ── Локальна перевірка ────────────────────────────────────────────────────
         if (submitted) {
             if (isCorrect == true) {
-                Text("✅ Все вірно!", color = MaterialTheme.colorScheme.primary)
+                Text("✅ Все вірно!", color = KvAccent)
             } else {
                 Text(
                     buildString {
@@ -113,17 +127,19 @@ fun CodingTaskView(
 
         Spacer(Modifier.height(24.dp))
 
+        // ── AI‑рев'ю або прогрес ─────────────────────────────────────────────────
         if (isLoading) {
-            CircularProgressIndicator()
+            CircularProgressIndicator(color = KvAccent)
         } else {
             aiReview?.let {
                 Text(
-                    "🧠 AI-рецензія:\n$it",
-                    color = MaterialTheme.colorScheme.secondary
+                    text  = "🧠 AI‑рецензія:\n$it",
+                    color = KvTextColor
                 )
             }
         }
 
+        // ── Помилки ──────────────────────────────────────────────────────────────
         error?.let {
             Spacer(Modifier.height(8.dp))
             Text(it, color = MaterialTheme.colorScheme.error)

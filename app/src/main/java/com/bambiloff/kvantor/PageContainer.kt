@@ -10,7 +10,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 /* кольори бренду */
-val KvBg        = Color(0xFF2A0A49)
+val KvBg        = Color(0xFF390D58)
 val KvAccent    = Color(0xFF8C52FF)
 val KvTextColor = Color.White
 

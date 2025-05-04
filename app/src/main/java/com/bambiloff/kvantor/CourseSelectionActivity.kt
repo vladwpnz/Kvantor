@@ -4,35 +4,50 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
+import com.bambiloff.kvantor.ui.theme.KvantorTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.foundation.shape.RoundedCornerShape
 
-
-/** Екран, що з'являється одразу після налаштування профілю */
+/** Екран вибору курсу */
 class CourseSelectionActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { CourseSelectionScreen(::openCourse) }
+        setContent {
+            // Стартуємо завжди в темній темі
+            var isDarkTheme by remember { mutableStateOf(true) }
+
+            KvantorTheme(darkTheme = isDarkTheme) {
+                CourseSelectionScreen(
+                    onSelect      = ::openCourse,
+                    isDarkTheme   = isDarkTheme,
+                    onToggleTheme = { isDarkTheme = it }
+                )
+            }
+        }
     }
 
     private fun openCourse(courseId: String) {
-        val uid  = FirebaseAuth.getInstance().currentUser?.uid ?: return
-        val user = FirebaseFirestore.getInstance().collection("users").document(uid)
-
-        // зберегли вибір
-        user.update("selectedCourse", courseId)
+        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        FirebaseFirestore.getInstance()
+            .collection("users")
+            .document(uid)
+            .update("selectedCourse", courseId)
             .addOnSuccessListener {
                 val target = when (courseId) {
                     "python"     -> MainActivity::class.java
@@ -45,48 +60,113 @@ class CourseSelectionActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CourseSelectionScreen(onSelect: (String) -> Unit) {
+fun CourseSelectionScreen(
+    onSelect: (String) -> Unit,
+    isDarkTheme: Boolean,
+    onToggleTheme: (Boolean) -> Unit
+) {
+    val cs = MaterialTheme.colorScheme
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF390D58))
+            .background(cs.background)
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.Top
     ) {
+        /* Перемикач теми */
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            IconToggleButton(
+                checked = isDarkTheme,
+                onCheckedChange = onToggleTheme
+            ) {
+                Icon(
+                    imageVector = if (isDarkTheme) Icons.Default.DarkMode else Icons.Default.LightMode,
+                    contentDescription = null,
+                    tint = cs.primary
+                )
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        /* Ілюстрація */
+        Icon(
+            imageVector = Icons.Default.School,
+            contentDescription = null,
+            tint = cs.primary,
+            modifier = Modifier.size(96.dp)
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        /* Заголовок */
         Text(
             text  = "Обери курс",
-            color = Color.White,
-            style = MaterialTheme.typography.headlineMedium
+            style = MaterialTheme.typography.headlineMedium,
+            color = cs.onBackground
         )
 
         Spacer(Modifier.height(32.dp))
 
-        /* ----------  PYTHON  ---------- */
-        Button(
-            onClick = { onSelect("python") },          // ← Ось цього й бракувало
-            modifier = Modifier.fillMaxWidth(),
-            shape    = RoundedCornerShape(8.dp),
-            colors   = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF1DE0FF),
-                contentColor   = Color.Black          // чорний текст видно на бірюзовому
-            )
-        ) { Text("Python") }
+        /* Курс Python */
+        CourseButton(
+            title       = "Python",
+            description = "Базові концепції та практичні задачі",
+            onClick     = { onSelect("python") },
+            cs          = cs
+        )
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
 
-        /* ----------  JAVASCRIPT  ---------- */
-        Button(
-            onClick = { onSelect("javascript") },
-            modifier = Modifier.fillMaxWidth(),
-            shape    = RoundedCornerShape(8.dp),
-            colors   = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF1DE0FF),
-                contentColor   = Color.Black
-            )
-        ) { Text("JavaScript") }
+        /* Курс JavaScript */
+        CourseButton(
+            title       = "JavaScript",
+            description = "Основи веб-розробки та DOM-маніпуляції",
+            onClick     = { onSelect("javascript") },
+            cs          = cs
+        )
     }
 }
 
+@Composable
+private fun CourseButton(
+    title: String,
+    description: String,
+    onClick: () -> Unit,
+    cs: ColorScheme
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.95f else 1f)
 
+    Button(
+        onClick           = onClick,
+        interactionSource = interaction,
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .padding(vertical = 4.dp),
+        shape  = RoundedCornerShape(8.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = cs.primary,
+            contentColor   = cs.onPrimary
+        )
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text  = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = cs.onPrimary.copy(alpha = .9f)
+            )
+        }
+    }
+}

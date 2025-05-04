@@ -1,11 +1,12 @@
+/* ───────────────────────── JavaScriptMainActivity.kt ───────────────────────── */
 package com.bambiloff.kvantor
 
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -14,6 +15,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,18 +28,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.sp // KvBg = #390D58, KvAccent = #8C52FF
 import com.bambiloff.kvantor.ui.theme.KvantorTheme
 import com.bambiloff.kvantor.ui.theme.Rubik
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import androidx.compose.ui.text.style.TextAlign
 
 class JavaScriptMainActivity : ComponentActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        /* ── апаратна кнопка «Назад» → повертаємось до вибору курсу ── */
+        /* апаратна «Назад» → вибір курсу */
         onBackPressedDispatcher.addCallback(
             this,
             object : OnBackPressedCallback(true) {
@@ -50,45 +54,54 @@ class JavaScriptMainActivity : ComponentActivity() {
         )
 
         setContent {
-            KvantorTheme { JavaScriptCourseScreen() }
+            var dark by remember { mutableStateOf(true) }
+            KvantorTheme(darkTheme = dark) { JavaScriptMenu(dark, onToggle = { dark = it }) }
         }
     }
 }
 
+/* ------------------------- сам екран ------------------------- */
 @Composable
-fun JavaScriptCourseScreen() {
-    val context = LocalContext.current
-    val uid = FirebaseAuth.getInstance().currentUser?.uid
-    val db = FirebaseFirestore.getInstance()
+private fun JavaScriptMenu(dark: Boolean, onToggle: (Boolean) -> Unit) {
 
-    /* ---- аватар ---- */
-    var avatarResId by remember { mutableStateOf(R.drawable.default_avatar) }
+    /* базові кольори (повністю як у Python‑екрані) */
+    val bg      = if (dark) KvBg else Color(0xFFF5F5F5)
+    val accent  = KvAccent
+    val textClr = if (dark) KvTextColor else Color(0xFF1A1A1A)
+
+    val context = LocalContext.current
+    val uid  = FirebaseAuth.getInstance().currentUser?.uid
+    val db   = FirebaseFirestore.getInstance()
+
+    /* аватар без reflection */
+    var avatar by remember { mutableStateOf(R.drawable.default_avatar) }
     LaunchedEffect(uid) {
-        uid?.let { user ->
-            db.collection("users").document(user)
-                .get()
-                .addOnSuccessListener { doc ->
-                    val name = doc.getString("avatarName") ?: "default_avatar"
-                    val id = context.resources.getIdentifier(name, "drawable", context.packageName)
-                    avatarResId = if (id != 0) id else R.drawable.default_avatar
+        uid?.let { u ->
+            db.collection("users").document(u).get()
+                .addOnSuccessListener { d ->
+                    avatar = when (d.getString("avatarName")) {
+                        "avatar1" -> R.drawable.avatar1
+                        "avatar2" -> R.drawable.avatar2
+                        "avatar3" -> R.drawable.avatar3
+                        "avatar4" -> R.drawable.avatar4
+                        else      -> R.drawable.default_avatar
+                    }
                 }
         }
     }
 
+    /* список модулів */
     val topics = listOf(
-        "Вступ" to "Що таке JavaScript, його роль у веб-розробці.",
-        "Змінні та типи" to "var, let, const і базові типи даних.",
-        "Функції" to "Оголошення та виклик, стрілочні функції.",
-        "Цикли та умови" to "for, while, if/else — керування потоком.",
+        "Вступ"            to "Що таке JavaScript, його роль у веб‑розробці.",
+        "Змінні та типи"    to "var, let, const і базові типи даних.",
+        "Функції"          to "Оголошення та виклик, стрілочні функції.",
+        "Цикли та умови"    to "for, while, if/else — керування потоком.",
         "Масиви та об'єкти" to "Методи масивів, властивості об'єктів.",
-        "DOM та події" to "Маніпуляція DOM-деревом, обробники подій."
+        "DOM та події"      to "Маніпуляція DOM‑деревом, обробники подій."
     )
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color(0xFF0D2A39))
-    ) {
+    /* ----------------- UI ----------------- */
+    Box(Modifier.fillMaxSize().background(bg)) {
         Column(
             Modifier
                 .fillMaxSize()
@@ -96,81 +109,73 @@ fun JavaScriptCourseScreen() {
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            /* ---- Верхній рядок: стрілка назад + аватар ---- */
+            /* top‑row */
             Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
+                Modifier.fillMaxWidth().padding(bottom = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment     = Alignment.CenterVertically
             ) {
-                /* ←  кнопка Назад */
                 Icon(
                     painter = painterResource(R.drawable.ic_arrow_back),
-                    contentDescription = "Назад",
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clickable {
-                            context.startActivity(
-                                Intent(context, CourseSelectionActivity::class.java)
-                                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                            )
-                            (context as Activity).finish()
-                        },
-                    tint = Color.White          // tint іде наприкінці
+                    contentDescription = null,
+                    tint = textClr,
+                    modifier = Modifier.size(28.dp).clickable {
+                        context.startActivity(
+                            Intent(context, CourseSelectionActivity::class.java)
+                                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        )
+                        (context as Activity).finish()
+                    }
                 )
 
+                IconToggleButton(dark, onToggle) {
+                    Icon(
+                        if (dark) Icons.Default.DarkMode else Icons.Default.LightMode,
+                        null,
+                        tint = accent
+                    )
+                }
 
-                /* аватар */
                 Image(
-                    painter = painterResource(id = avatarResId),
-                    contentDescription = "Профіль",
+                    painter = painterResource(id = avatar),
+                    contentDescription = null,
                     modifier = Modifier
                         .size(36.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .clickable {
-                            context.startActivity(
-                                Intent(context, ProfileActivity::class.java)
-                            )
+                            context.startActivity(Intent(context, ProfileActivity::class.java))
                         }
                 )
             }
 
-            /* ---- заголовок ---- */
+            /* заголовок */
             Text(
                 "JAVASCRIPT",
-                fontSize = 28.sp,
+                fontSize   = 28.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = Rubik,
-                color = Color(0xFFF7DF1E)
+                color      = accent
             )
 
             Spacer(Modifier.height(24.dp))
 
-            /* ---- список тем ---- */
-            topics.forEach { (title, description) ->
-                var expanded by remember { mutableStateOf(false) }
+            /* модулі (фон = чистий KvAccent) */
+            topics.forEach { (title, descr) ->
+                var expand by remember { mutableStateOf(false) }
                 Column(
-                    Modifier
-                        .fillMaxWidth()
+                    Modifier.fillMaxWidth()
                         .padding(vertical = 4.dp)
-                        .background(Color(0xFF174861), RoundedCornerShape(6.dp))
-                        .clickable { expanded = !expanded }
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                        .background(accent, RoundedCornerShape(8.dp))
+                        .clickable { expand = !expand }
+                        .padding(16.dp)
                 ) {
-                    Text(
-                        text = title,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        fontFamily = Rubik,
-                        color = Color.White
-                    )
-                    AnimatedVisibility(expanded) {
+                    Text(title, color = Color.White, fontSize = 16.sp, fontFamily = Rubik)
+                    AnimatedVisibility(expand) {
                         Text(
-                            text = description,
+                            descr,
+                            color = Color.White.copy(alpha = .9f),
                             fontSize = 14.sp,
                             fontFamily = Rubik,
-                            color = Color(0xFFE0E0E0),
                             modifier = Modifier.padding(top = 6.dp)
                         )
                     }
@@ -179,54 +184,66 @@ fun JavaScriptCourseScreen() {
 
             Spacer(Modifier.weight(1f))
 
-            /* ---- кнопки почати / продовжити ---- */
+            /* нижні кнопки: квадратні, без анімації */
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                BasicPurpleButton(
+                    text = "Почати курс з початку",
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Button(
-                        onClick = {
-                            uid?.let { user ->
-                                db.collection("users").document(user)
-                                    .update(
-                                        "progress.javascript",
-                                        mapOf("moduleIndex" to 0, "pageIndex" to 0)
-                                    )
-                                    .addOnCompleteListener {
-                                        context.startActivity(
-                                            Intent(context, LessonActivity::class.java)
-                                                .putExtra("courseType", "javascript")
-                                        )
-                                    }
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF7DF1E))
-                    ) {
-                        Text("Почати курс з початку", color = Color.Black, fontFamily = Rubik)
-                    }
-
-                    Button(
-                        onClick = {
-                            context.startActivity(
-                                Intent(context, LessonActivity::class.java)
-                                    .putExtra("courseType", "javascript")
+                    uid?.let { user ->
+                        db.collection("users").document(user)
+                            .update(
+                                "progress.javascript",
+                                mapOf("moduleIndex" to 0, "pageIndex" to 0)
                             )
-                        },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF7DF1E))
-                    ) {
-                        Text("Продовжити курс", color = Color.Black, fontFamily = Rubik)
                     }
+                    context.startActivity(
+                        Intent(context, LessonActivity::class.java)
+                            .putExtra("courseType", "javascript")
+                    )
                 }
 
+                BasicPurpleButton(
+                    text = "Продовжити курс",
+                    modifier = Modifier.weight(1f)
+                ) {
+                    context.startActivity(
+                        Intent(context, LessonActivity::class.java)
+                            .putExtra("courseType", "javascript")
+                    )
+                }
             }
         }
     }
 }
+
+/* ---------------- квадратна кнопка на KvAccent ---------------- */
+@Composable
+private fun BasicPurpleButton(
+    text: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+          // прибираємо фіксовану висоту
+               modifier = modifier,                // без height → стандартна висота
+        shape    = RoundedCornerShape(8.dp),
+        colors   = ButtonDefaults.buttonColors(
+            containerColor = KvAccent,
+            contentColor   = Color.White
+        )
+    ) {
+        Text(
+            text,
+            fontFamily = Rubik,
+                       modifier = Modifier.fillMaxWidth(),
+                       textAlign = TextAlign.Left
+        )
+    }
+}
+
+
