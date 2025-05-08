@@ -85,4 +85,6 @@ dependencies {
     implementation ("com.squareup.okhttp3:logging-interceptor:5.0.0-alpha.11")
     implementation ("com.google.firebase:firebase-firestore-ktx:24.7.1")
 
+
+    implementation ("androidx.compose.material:material-icons-extended:1.4.3")
 }

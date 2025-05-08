@@ -23,6 +23,9 @@ import androidx.compose.ui.unit.dp
 import com.bambiloff.kvantor.ui.theme.KvantorTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import androidx.compose.ui.platform.LocalContext
+
+
 
 /** Екран вибору курсу */
 class CourseSelectionActivity : ComponentActivity() {
@@ -67,7 +70,8 @@ fun CourseSelectionScreen(
     isDarkTheme: Boolean,
     onToggleTheme: (Boolean) -> Unit
 ) {
-    val cs = MaterialTheme.colorScheme
+    val cs  = MaterialTheme.colorScheme
+    val ctx = LocalContext.current      // ← потрібен для запуску AiAssistantActivity
 
     Column(
         modifier = Modifier
@@ -77,19 +81,19 @@ fun CourseSelectionScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Top
     ) {
-        /* Перемикач теми */
+        /* ───────── Перемикач теми ───────── */
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End
         ) {
             IconToggleButton(
-                checked = isDarkTheme,
-                onCheckedChange = onToggleTheme
+                checked          = isDarkTheme,
+                onCheckedChange  = onToggleTheme
             ) {
                 Icon(
-                    imageVector = if (isDarkTheme) Icons.Default.DarkMode else Icons.Default.LightMode,
+                    imageVector       = if (isDarkTheme) Icons.Default.DarkMode else Icons.Default.LightMode,
                     contentDescription = null,
-                    tint = cs.primary
+                    tint              = cs.primary
                 )
             }
         }
@@ -115,7 +119,7 @@ fun CourseSelectionScreen(
 
         Spacer(Modifier.height(32.dp))
 
-        /* Курс Python */
+        /* ───────── Курс Python ───────── */
         CourseButton(
             title       = "Python",
             description = "Базові концепції та практичні задачі",
@@ -125,11 +129,25 @@ fun CourseSelectionScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        /* Курс JavaScript */
+        /* ───────── Курс JavaScript ───────── */
         CourseButton(
             title       = "JavaScript",
             description = "Основи веб-розробки та DOM-маніпуляції",
             onClick     = { onSelect("javascript") },
+            cs          = cs
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        /* ───────── НОВА КНОПКА: AI‑помічник ───────── */
+        CourseButton(
+            title       = "AI‑помічник",
+            description = "Чат із ШІ та code‑review",
+            onClick     = {
+                ctx.startActivity(
+                    Intent(ctx, AiAssistantActivity::class.java)
+                )
+            },
             cs          = cs
         )
     }
@@ -144,7 +162,10 @@ private fun CourseButton(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.95f else 1f)
+    val scale by animateFloatAsState(   // ← label додано
+        targetValue = if (pressed) 0.95f else 1f,
+        label = ""
+    )
 
     Button(
         onClick           = onClick,

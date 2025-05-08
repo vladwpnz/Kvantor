@@ -50,6 +50,11 @@
         </activity>
         <activity android:name=".JavaScriptMainActivity" android:exported="true" />
 
+        <activity
+            android:name=".AiAssistantActivity"
+            android:exported="false"
+            android:parentActivityName=".CourseSelectionActivity">
+        </activity>
 
 
     </application>
