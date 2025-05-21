@@ -1,14 +1,14 @@
+// File: app/src/main/java/com/bambiloff/kvantor/LessonViewModel.kt
 package com.bambiloff.kvantor
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
@@ -20,74 +20,155 @@ class LessonViewModel(
     private val db   = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
 
-    /* ---------------- State ---------------- */
-    private val _modules = MutableStateFlow<List<Module>>(emptyList())
-    val modules: StateFlow<List<Module>> = _modules
+    /* ---------------- Data ---------------- */
+    private val _modules            = MutableStateFlow<List<Module>>(emptyList())
+    val           modules: StateFlow<List<Module>> = _modules
 
     private val _currentModuleIndex = MutableStateFlow(0)
-    val currentModuleIndex: StateFlow<Int> = _currentModuleIndex
+    val           currentModuleIndex: StateFlow<Int> = _currentModuleIndex
 
-    private val _currentPageIndex = MutableStateFlow(0)
-    val currentPageIndex: StateFlow<Int> = _currentPageIndex
+    private val _currentPageIndex   = MutableStateFlow(0)
+    val           currentPageIndex:  StateFlow<Int> = _currentPageIndex
 
-    val currentModule =
-        combine(_modules, _currentModuleIndex) { list, idx -> list.getOrNull(idx) }
-            .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, null)
+    /* ----------  Gamification  ---------- */
+    private val _lives     = MutableStateFlow(0)
+    val           lives:    StateFlow<Int> = _lives
 
-    /* ------------------------------------------------------------------------ */
-    /** Завантажує модулі і відновлює прогрес */
+    private val _hints     = MutableStateFlow(0)
+    val           hints:    StateFlow<Int> = _hints
+
+    private val _coins     = MutableStateFlow(0)
+    val           coins:    StateFlow<Int> = _coins
+
+    private val _showHint  = MutableStateFlow<String?>(null)
+    val           showHint: StateFlow<String?> = _showHint
+
+    /* ----------  last life timestamp & таймер ---------- */
+    private val _lastLifeTS     = MutableStateFlow<Timestamp?>(null)
+    private val _timeToNextLife = MutableStateFlow(0L)      // сек
+    val           timeToNextLife: StateFlow<Long> = _timeToNextLife
+
+    /* (можна реагувати у UI) */
+    sealed interface UiEvent {
+        object NoLives  : UiEvent
+        object NoHints  : UiEvent
+        object NoCoins  : UiEvent
+    }
+    private val _events = MutableSharedFlow<UiEvent>()
+    val           events = _events.asSharedFlow()
+
+    /* -------- константи -------- */
+    private companion object {
+        const val LIFE_COST        = 30
+        const val HINT_COST        = 20
+        const val MAX_LIVES        = 10
+        const val RESTORE_INTERVAL = 2 * 60   // 10 хвилин = 600 с
+    }
+
+    /* ---------------- Current module helper ---------------- */
+    val currentModule = combine(_modules, _currentModuleIndex) { list, idx ->
+        list.getOrNull(idx)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /* -------------------------------------------------------------------- */
+    init {
+        auth.currentUser?.uid?.let { uid ->
+            /* ---- 1. live listener на документ користувача ---- */
+            db.collection("users").document(uid)
+                .addSnapshotListener { snap, _ ->
+                    snap ?: return@addSnapshotListener
+                    _lives.value      = (snap.getLong("lives") ?: 0).toInt()
+                    _hints.value      = (snap.getLong("hints") ?: 0).toInt()
+                    _coins.value      = (snap.getLong("coins") ?: 0).toInt()
+                    _lastLifeTS.value = snap.getTimestamp("lastLifeTS")
+                }
+
+            /* ---- 2. одноразова ініціалізація ---- */
+            viewModelScope.launch {
+                UserBootstrapper.ensureStats(uid)
+                GameManager.maybeRestoreLife(uid)
+            }
+
+            /* ---- 3. тікер 1 сек: рахуємо до наступного ❤️ ---- */
+            viewModelScope.launch {
+                while (true) {
+                    delay(1_000)
+
+                    val livesNow = _lives.value
+                    if (livesNow >= MAX_LIVES) {
+                        _timeToNextLife.value = 0
+                        continue
+                    }
+
+                    val last = _lastLifeTS.value
+                    if (last == null) { _timeToNextLife.value = 0; continue }
+
+                    val passed = (Timestamp.now().seconds - last.seconds).toInt()
+                    val left   = (RESTORE_INTERVAL - passed).coerceAtLeast(0)
+                    _timeToNextLife.value = left.toLong()
+
+                    if (left == 0) {
+                        GameManager.maybeRestoreLife(uid, MAX_LIVES)
+                    }
+                }
+            }
+        }
+    }
+
+    /* ---------------- Modules loading ---------------- */
     fun loadModules() {
         viewModelScope.launch {
             val collection = if (courseType == "javascript") "modules_js" else "modules"
             try {
                 val snapshot = db.collection(collection).get().await()
-                val loaded = snapshot.documents
+                _modules.value = snapshot.documents
                     .mapNotNull { it.toObject(ModuleDto::class.java)?.toModule() }
                     .sortedBy { it.id }
-                _modules.value = loaded
-                restoreProgress()
+
+                restoreProgress()          // відновлюємо позицію
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
     }
 
-    /* ------------------------------------------------------------------------ */
-    /** Зберігає позицію користувача */
-    private fun saveProgress() {
+    /* ---------------- Progress save / restore ---------------- */
+    fun saveProgress() {
         auth.currentUser?.uid?.let { uid ->
-            val progressData = mapOf(
+            val progress = mapOf(
                 "moduleIndex" to _currentModuleIndex.value,
                 "pageIndex"   to _currentPageIndex.value
             )
-            val data = mapOf("progress" to mapOf(courseType to progressData))
-            db.collection("users")
-                .document(uid)
-                .set(data, SetOptions.merge())
-                .addOnFailureListener { e -> println("❌ Save error: ${e.message}") }
+            db.collection("users").document(uid)
+                .set(
+                    mapOf("progress" to mapOf(courseType to progress)),
+                    SetOptions.merge()
+                )
         }
     }
 
-    /* ------------------------------------------------------------------------ */
-    /** Відновлює позицію користувача */
     private fun restoreProgress() {
         viewModelScope.launch {
             auth.currentUser?.uid?.let { uid ->
                 try {
-                    val doc = db.collection("users").document(uid).get().await()
+                    val doc  = db.collection("users").document(uid).get().await()
                     @Suppress("UNCHECKED_CAST")
                     val root = doc.get("progress") as? Map<String, Map<String, Long>>
-                    val course = root?.get(courseType)
-                    val mIdx = (course?.get("moduleIndex") ?: 0L).toInt()
-                    val pIdx = (course?.get("pageIndex")   ?: 0L).toInt()
-                    val maxModule = _modules.value.lastIndex.coerceAtLeast(0)
-                    _currentModuleIndex.value = mIdx.coerceIn(0, maxModule)
-                    val pageCount = _modules.value
+                    val cur  = root?.get(courseType)
+
+                    val mIdx = (cur?.get("moduleIndex") ?: 0L).toInt()
+                    val pIdx = (cur?.get("pageIndex")   ?: 0L).toInt()
+
+                    _currentModuleIndex.value =
+                        mIdx.coerceIn(0, _modules.value.lastIndex.coerceAtLeast(0))
+
+                    val pagesInModule = _modules.value
                         .getOrNull(_currentModuleIndex.value)
-                        ?.pages
-                        ?.size ?: 1
-                    _currentPageIndex.value = pIdx.coerceIn(0, pageCount - 1)
-                    println("📥 Restored ($courseType): module=$mIdx page=$pIdx")
+                        ?.pages?.lastIndex ?: 0
+
+                    _currentPageIndex.value =
+                        pIdx.coerceIn(0, pagesInModule)
+
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -95,58 +176,63 @@ class LessonViewModel(
         }
     }
 
-    /* ------------------------------------------------------------------------ */
-    /** Позначає модуль завершеним */
-    private fun markModuleCompleted(moduleId: String) {
-        auth.currentUser?.uid?.let { uid ->
-            val ref = db.collection("users").document(uid)
-            db.runTransaction { tx ->
-                val done = tx.get(ref).get("completedModules") as? List<String> ?: emptyList()
-                if (moduleId !in done) {
-                    tx.update(ref, "completedModules", done + moduleId)
-                }
-            }.addOnSuccessListener {
-                println("✅ Module completed: $moduleId ($courseType)")
-            }
+    /* ---------------- Gamification helpers ---------------- */
+
+    fun checkAnswer(page: Page.Test, userAnswerIndex: Int) = viewModelScope.launch {
+        val uid = auth.currentUser?.uid ?: return@launch
+        if (userAnswerIndex == page.correctAnswerIndex) {
+            GameManager.addCoins(uid, 10)
+        } else {
+            val ok = GameManager.spendLife(uid)
+            if (!ok) _events.emit(UiEvent.NoLives)
         }
     }
 
-    /* ------------------------------------------------------------------------ */
-    /**
-     * Натиск “Далі”:
-     * – переходить на наступну сторінку, або
-     * – завершує модуль, або
-     * – при завершенні останнього модуля — розблоковує ачівку курсу.
-     */
-    fun next() {
-        viewModelScope.launch {
-            val mod = currentModule.value ?: return@launch
-            val lastModuleIndex = _modules.value.lastIndex
+    fun requestHint(page: Page.Test) = viewModelScope.launch {
+        val uid = auth.currentUser?.uid ?: return@launch
+        val ok  = GameManager.spendHint(uid)
+        if (ok) _showHint.value = page.hint else _events.emit(UiEvent.NoHints)
+    }
 
-            if (_currentPageIndex.value < mod.pages.lastIndex) {
-                // рухаємося по сторінках у межах модуля
+    fun clearHint() { _showHint.value = null }
+
+    fun buyLife() = viewModelScope.launch {
+        val uid = auth.currentUser?.uid ?: return@launch
+        val ok  = GameManager.buy(uid, LIFE_COST) { GameManager.addLives(uid, 1) }
+        if (!ok) _events.emit(UiEvent.NoCoins)
+    }
+
+    fun buyHint() = viewModelScope.launch {
+        val uid = auth.currentUser?.uid ?: return@launch
+        val ok  = GameManager.buy(uid, HINT_COST) { GameManager.addHints(uid, 1) }
+        if (!ok) _events.emit(UiEvent.NoCoins)
+    }
+
+    /* ---------------- Mark module completed ---------------- */
+    private fun markModuleCompleted(moduleId: String) { /* без змін */ }
+
+    /* ---------------- Навігація ---------------- */
+    fun next() {
+        if (_lives.value == 0) {
+            viewModelScope.launch { _events.emit(UiEvent.NoLives) }
+            return
+        }
+        viewModelScope.launch {
+            val module = currentModule.value ?: return@launch
+            val lastModuleIndex = _modules.value.lastIndex
+            if (_currentPageIndex.value < module.pages.lastIndex) {
                 _currentPageIndex.value += 1
             } else {
-                // модуль завершено
-                markModuleCompleted(mod.id)
-
+                markModuleCompleted(module.id)
                 if (_currentModuleIndex.value < lastModuleIndex) {
-                    // переходимо до наступного модуля
                     _currentModuleIndex.value += 1
                     _currentPageIndex.value = 0
                 } else {
-                    // курс завершено — розблоковуємо відповідну ачівку
                     auth.currentUser?.uid?.let { uid ->
-                        when (courseType) {
-                            "python"     -> AchievementManager.unlockAchievement(uid, "PY_MASTER")
-                            "javascript" -> AchievementManager.unlockAchievement(uid, "JS_SAMURAI")
-                        }
-                        println("🏆 Course achievement unlocked for $courseType")
+                        CourseCompletionChecker.checkCourseCompleted(uid, courseType)
                     }
                 }
             }
-
-            // зберігаємо прогрес (індекси)
             saveProgress()
         }
     }

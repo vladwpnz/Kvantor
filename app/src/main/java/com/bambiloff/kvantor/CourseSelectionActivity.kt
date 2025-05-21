@@ -1,38 +1,39 @@
 package com.bambiloff.kvantor
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.bambiloff.kvantor.ui.theme.KvantorTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import androidx.compose.ui.platform.LocalContext
 
-
-
-/** Екран вибору курсу */
 class CourseSelectionActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            // Стартуємо завжди в темній темі
             var isDarkTheme by remember { mutableStateOf(true) }
 
             KvantorTheme(darkTheme = isDarkTheme) {
@@ -63,6 +64,7 @@ class CourseSelectionActivity : ComponentActivity() {
     }
 }
 
+@SuppressLint("DiscouragedApi")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CourseSelectionScreen(
@@ -71,88 +73,122 @@ fun CourseSelectionScreen(
     onToggleTheme: (Boolean) -> Unit
 ) {
     val cs  = MaterialTheme.colorScheme
-    val ctx = LocalContext.current      // ← потрібен для запуску AiAssistantActivity
+    val ctx = LocalContext.current
+
+    /* --------- аватар з Firestore --------- */
+    var avatarResId by remember { mutableStateOf(R.drawable.default_avatar) }
+    LaunchedEffect(FirebaseAuth.getInstance().currentUser?.uid) {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return@LaunchedEffect
+        FirebaseFirestore.getInstance()
+            .collection("users")
+            .document(uid)
+            .get()
+            .addOnSuccessListener { doc ->
+                val name = doc.getString("avatarName") ?: "default_avatar"
+                val id   = ctx.resources.getIdentifier(name, "drawable", ctx.packageName)
+                avatarResId = if (id != 0) id else R.drawable.default_avatar
+            }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(cs.background)
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Top
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        /* ───────── Перемикач теми ───────── */
+        /* ───────────────── Top Row ───────────────── */
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
+            Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment     = Alignment.CenterVertically
         ) {
+            /* перемикач теми */
             IconToggleButton(
-                checked          = isDarkTheme,
-                onCheckedChange  = onToggleTheme
+                checked         = isDarkTheme,
+                onCheckedChange = onToggleTheme
             ) {
                 Icon(
                     imageVector       = if (isDarkTheme) Icons.Default.DarkMode else Icons.Default.LightMode,
-                    contentDescription = null,
-                    tint              = cs.primary
+                    contentDescription = "Перемкнути тему",
+                    tint               = cs.primary
+                )
+            }
+
+            /* правий блок: магазин + аватар */
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = {
+                        ctx.startActivity(Intent(ctx, ShopActivity::class.java))
+                    }
+                ) {
+                    Icon(
+                        Icons.Default.ShoppingCart,
+                        contentDescription = "Магазин",
+                        tint               = cs.primary
+                    )
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                Image(
+                    painter            = painterResource(id = avatarResId),
+                    contentDescription = "Профіль",
+                    modifier           = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            ctx.startActivity(Intent(ctx, ProfileActivity::class.java))
+                        }
                 )
             }
         }
 
-        Spacer(Modifier.height(16.dp))
-
-        /* Ілюстрація */
+        /* --------------- ілюстрація та заголовок --------------- */
         Icon(
-            imageVector = Icons.Default.School,
+            imageVector       = Icons.Default.School,
             contentDescription = null,
-            tint = cs.primary,
-            modifier = Modifier.size(96.dp)
+            tint              = cs.primary,
+            modifier          = Modifier.size(96.dp)
         )
-
         Spacer(Modifier.height(16.dp))
-
-        /* Заголовок */
         Text(
             text  = "Обери курс",
             style = MaterialTheme.typography.headlineMedium,
             color = cs.onBackground
         )
-
         Spacer(Modifier.height(32.dp))
 
-        /* ───────── Курс Python ───────── */
+        /* --------------- кнопки курсів --------------- */
         CourseButton(
             title       = "Python",
             description = "Базові концепції та практичні задачі",
             onClick     = { onSelect("python") },
             cs          = cs
         )
-
         Spacer(Modifier.height(8.dp))
-
-        /* ───────── Курс JavaScript ───────── */
         CourseButton(
             title       = "JavaScript",
             description = "Основи веб-розробки та DOM-маніпуляції",
             onClick     = { onSelect("javascript") },
             cs          = cs
         )
-
         Spacer(Modifier.height(8.dp))
-
-        /* ───────── НОВА КНОПКА: AI‑помічник ───────── */
         CourseButton(
-            title       = "AI‑помічник",
-            description = "Чат із ШІ та code‑review",
+            title       = "AI-помічник",
+            description = "Чат із ШІ та code-review",
             onClick     = {
-                ctx.startActivity(
-                    Intent(ctx, AiAssistantActivity::class.java)
-                )
+                ctx.startActivity(Intent(ctx, AiAssistantActivity::class.java))
             },
             cs          = cs
         )
     }
 }
 
+/* ───────── helper Composable ───────── */
 @Composable
 private fun CourseButton(
     title: String,
@@ -162,15 +198,12 @@ private fun CourseButton(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(   // ← label додано
-        targetValue = if (pressed) 0.95f else 1f,
-        label = ""
-    )
+    val scale  by animateFloatAsState(if (pressed) 0.95f else 1f)
 
     Button(
         onClick           = onClick,
         interactionSource = interaction,
-        modifier = Modifier
+        modifier          = Modifier
             .fillMaxWidth()
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .padding(vertical = 4.dp),

@@ -10,5 +10,6 @@ data class PageDto(
     val description: String? = null,
     val expectedCode: String? = null, // 🟢 додано
     val codeReviewPlaceholder: String? = null,
-    val message: String? = null
+    val message: String? = null,
+    val hint: String? = null
 )

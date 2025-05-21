@@ -35,7 +35,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Help
-import com.bambiloff.kvantor.Achievement
+
 
 
 
@@ -183,14 +183,14 @@ fun ProfileScreen() {
                 items(achievements) { ach ->
                     val icon = when (ach.id) {
                         "WELCOME"    -> Icons.Filled.EmojiEvents
-                        "PY_MASTER"  -> Icons.Filled.Code
-                        "JS_SAMURAI" -> Icons.Filled.Code
+                        "FIRST_STEPS_IN_PY"  -> Icons.Filled.Code
+                        "FIRST_STEPS_IN_JS" -> Icons.Filled.Code
                         else         -> Icons.AutoMirrored.Filled.Help
                     }
                     val title = when (ach.id) {
                         "WELCOME"    -> "Перший крок"
-                        "PY_MASTER"  -> "Python-Майстер"
-                        "JS_SAMURAI" -> "JS-Самурай"
+                        "FIRST_STEPS_IN_PY"  -> "Перший крок у Python"
+                        "FIRST_STEPS_IN_JS" -> "Перший крок у JS"
                         else         -> ach.id
                     }
 

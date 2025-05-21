@@ -5,12 +5,14 @@ sealed class Page {
     data class Test(
         val question: String,
         val answers: List<String>,
-        val correctAnswerIndex: Int
+        val correctAnswerIndex: Int,
+        val hint: String?
     ) : Page()
     data class CodingTask(
         val description: String,
         val expectedCode: String,
-        val codeReviewPlaceholder: String
+        val codeReviewPlaceholder: String,
+        val hint: String? = null
     ) : Page()
     data class Final(val message: String) : Page()
 }

@@ -1,5 +1,6 @@
 package com.bambiloff.kvantor
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
@@ -23,7 +24,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bambiloff.kvantor.ui.theme.KvantorTheme
-import com.bambiloff.kvantor.ui.theme.Rubik // 👈 підключення шрифту
+import com.bambiloff.kvantor.ui.theme.Rubik
 import com.google.firebase.auth.FirebaseAuth
 
 class RegisterActivity : ComponentActivity() {
@@ -32,21 +33,26 @@ class RegisterActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         auth = FirebaseAuth.getInstance()
 
         setContent {
             KvantorTheme {
                 RegisterScreen { email, password ->
-                    auth.createUserWithEmailAndPassword(email, password).addOnCompleteListener {
-                        if (it.isSuccessful) {
-                            Toast.makeText(this, "Реєстрація успішна!", Toast.LENGTH_SHORT).show()
-                            startActivity(Intent(this, ProfileSetupActivity::class.java))
-                            finish()
-                        } else {
-                            Toast.makeText(this, "Помилка: ${it.exception?.message}", Toast.LENGTH_SHORT).show()
+                    auth.createUserWithEmailAndPassword(email, password)
+                        .addOnCompleteListener {
+                            if (it.isSuccessful) {
+                                Toast.makeText(this, "Реєстрація успішна!", Toast.LENGTH_SHORT)
+                                    .show()
+                                startActivity(Intent(this, ProfileSetupActivity::class.java))
+                                finish()
+                            } else {
+                                Toast.makeText(
+                                    this,
+                                    "Помилка: ${it.exception?.message}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         }
-                    }
                 }
             }
         }
@@ -56,12 +62,11 @@ class RegisterActivity : ComponentActivity() {
 @Composable
 fun RegisterScreen(onRegister: (String, String) -> Unit) {
     val context = LocalContext.current
-
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
-    var confirmPasswordVisible by remember { mutableStateOf(false) }
+    var confirmVisible by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -115,10 +120,10 @@ fun RegisterScreen(onRegister: (String, String) -> Unit) {
             onValueChange = { confirmPassword = it },
             label = { Text("Повторіть пароль", color = Color.White, fontFamily = Rubik) },
             singleLine = true,
-            visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            visualTransformation = if (confirmVisible) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
-                val icon = if (confirmPasswordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
-                IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
+                val icon = if (confirmVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
+                IconButton(onClick = { confirmVisible = !confirmVisible }) {
                     Icon(imageVector = icon, contentDescription = null, tint = Color.White)
                 }
             },
@@ -128,9 +133,10 @@ fun RegisterScreen(onRegister: (String, String) -> Unit) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
+        // Основна кнопка Реєстрації
         Button(
             onClick = {
-                if (password == confirmPassword && email.isNotBlank()) {
+                if (email.isNotBlank() && password == confirmPassword) {
                     onRegister(email, password)
                 } else {
                     Toast.makeText(context, "Паролі не співпадають", Toast.LENGTH_SHORT).show()
@@ -143,6 +149,23 @@ fun RegisterScreen(onRegister: (String, String) -> Unit) {
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DE0FF))
         ) {
             Text("Зареєструватись", color = Color.Black, fontFamily = Rubik)
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Нова кнопка Повернутись назад
+        Button(
+            onClick = {
+                context.startActivity(Intent(context, AuthActivity::class.java))
+                if (context is Activity) context.finish()
+            },
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .height(48.dp),
+            shape = RoundedCornerShape(8.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DE0FF))
+        ) {
+            Text("Назад", color = Color.Black, fontFamily = Rubik)
         }
     }
 }

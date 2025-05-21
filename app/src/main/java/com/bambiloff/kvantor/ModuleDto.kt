@@ -21,12 +21,14 @@ fun PageDto.toPageOrNull(): Page? {
             "test" -> Page.Test(
                 question = question ?: "",
                 answers = answers ?: emptyList(),
-                correctAnswerIndex = correctAnswerIndex ?: 0
+                correctAnswerIndex = correctAnswerIndex ?: 0,
+                hint     = hint
             )
             "coding" -> Page.CodingTask(
                 description = description ?: "",
                 expectedCode = expectedCode ?: "",
-                codeReviewPlaceholder = codeReviewPlaceholder ?: ""
+                codeReviewPlaceholder = codeReviewPlaceholder ?: "",
+                hint     = hint
             )
             "final" -> Page.Final(message ?: "🎉 Вітаємо! Ви завершили модуль.")
             else -> null

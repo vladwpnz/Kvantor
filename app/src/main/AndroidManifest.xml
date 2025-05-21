@@ -56,6 +56,11 @@
             android:parentActivityName=".CourseSelectionActivity">
         </activity>
 
+        <activity
+            android:name=".ShopActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Kvantor">   <!-- або твій Theme -->
+        </activity>
 
     </application>
     <uses-permission android:name="android.permission.INTERNET"/>
