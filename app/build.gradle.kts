@@ -87,4 +87,15 @@ dependencies {
 
 
     implementation ("androidx.compose.material:material-icons-extended:1.4.3")
+    /* ──────── ✦ ДОПОВНЕННЯ ДЛЯ UI-ТЕСТІВ Compose ✦ ──────── */
+
+    // той самий BOM, але підхоплюємо його також у тестових конфігураціях,
+    // інакше Gradle попросить явну версію для ui-test-junit4
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.02.01"))
+    debugImplementation      (platform("androidx.compose:compose-bom:2024.02.01"))
+
+    // базові правила (Rule) AndroidX Test — знадобляться, якщо
+    // у тестах будете використовувати createAndroidComposeRule<…>()
+    androidTestImplementation("androidx.test:rules:1.5.0")
+
 }

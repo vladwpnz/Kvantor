@@ -34,6 +34,8 @@ import com.bambiloff.kvantor.ui.theme.Rubik
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import androidx.compose.ui.text.style.TextAlign
+import androidx. compose. ui. platform. testTag
+
 
 class JavaScriptMainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,6 +60,13 @@ class JavaScriptMainActivity : ComponentActivity() {
             KvantorTheme(darkTheme = dark) { JavaScriptMenu(dark, onToggle = { dark = it }) }
         }
     }
+}
+@Composable
+fun JavaScriptScreen() {
+    Text(
+        "Курс JavaScript",
+        modifier = Modifier.testTag("js_header")
+    )
 }
 
 /* ------------------------- сам екран ------------------------- */

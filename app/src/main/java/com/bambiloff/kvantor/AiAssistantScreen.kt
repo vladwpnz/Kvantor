@@ -15,6 +15,16 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bambiloff.kvantor.ui.theme.Rubik
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx. compose. ui. platform. testTag
+
+//@Composable
+//fun AiAssistantScreen() {
+//    Text(
+//        "AI-помічник",
+//        modifier = Modifier.testTag("ai_header")
+//    )
+//}
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

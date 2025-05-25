@@ -38,6 +38,8 @@ import com.bambiloff.kvantor.ui.theme.Rubik
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import androidx.compose.ui.platform.testTag
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,6 +54,17 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+}
+
+@Composable
+fun PythonScreen() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("python_header")   // ← ЯКІР ДЛЯ ТЕСТУ
+    ) {
+        Text("Python: перший урок")
     }
 }
 
@@ -85,6 +98,7 @@ fun PythonCourseScreen(
         Modifier
             .fillMaxSize()
             .background(cs.background)
+            .testTag("python_header")
     ) {
         Column(
             Modifier

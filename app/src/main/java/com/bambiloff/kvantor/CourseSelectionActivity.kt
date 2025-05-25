@@ -24,13 +24,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.bambiloff.kvantor.ui.theme.KvantorTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-
+import com. google. firebase. firestore. BuildConfig
+/**  MAIN ACTIVITY — вибір курсу  */
 class CourseSelectionActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -46,21 +49,36 @@ class CourseSelectionActivity : ComponentActivity() {
         }
     }
 
+    /**  Натискання кнопки курсу  */
     private fun openCourse(courseId: String) {
+
+        /* ── DEBUG-збірка: минаємо Firestore, одразу стартуємо цільову Activity ── */
+        if (BuildConfig.DEBUG) {
+            launchTarget(courseId)
+            return
+        }
+
+        /* ── Release: зберігаємо вибір у Firestore, після успіху відкриваємо курс ── */
         val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
         FirebaseFirestore.getInstance()
             .collection("users")
             .document(uid)
             .update("selectedCourse", courseId)
-            .addOnSuccessListener {
-                val target = when (courseId) {
-                    "python"     -> MainActivity::class.java
-                    "javascript" -> JavaScriptMainActivity::class.java
-                    else         -> MainActivity::class.java
-                }
-                startActivity(Intent(this, target))
-                finish()
-            }
+            .addOnSuccessListener { launchTarget(courseId) }
+    }
+
+    /**  Відкриває потрібну Activity та (у Release) закриває поточну  */
+    private fun launchTarget(courseId: String) {
+        val target = when (courseId) {
+            "python"     -> MainActivity::class.java
+            "javascript" -> JavaScriptMainActivity::class.java
+            else         -> MainActivity::class.java
+        }
+        startActivity(Intent(this, target))
+
+        if (!BuildConfig.DEBUG) {
+            finish()                    // Закриваємо тільки в релізі
+        }
     }
 }
 
@@ -75,7 +93,7 @@ fun CourseSelectionScreen(
     val cs  = MaterialTheme.colorScheme
     val ctx = LocalContext.current
 
-    /* --------- аватар з Firestore --------- */
+    /* --------- Аватар з Firestore --------- */
     var avatarResId by remember { mutableStateOf(R.drawable.default_avatar) }
     LaunchedEffect(FirebaseAuth.getInstance().currentUser?.uid) {
         val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return@LaunchedEffect
@@ -98,7 +116,7 @@ fun CourseSelectionScreen(
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        /* ───────────────── Top Row ───────────────── */
+        /* ─────────── Top Row ─────────── */
         Row(
             Modifier
                 .fillMaxWidth()
@@ -106,8 +124,8 @@ fun CourseSelectionScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment     = Alignment.CenterVertically
         ) {
-            /* перемикач теми */
             IconToggleButton(
+                modifier = Modifier.testTag("toggle_theme"),
                 checked         = isDarkTheme,
                 onCheckedChange = onToggleTheme
             ) {
@@ -118,9 +136,9 @@ fun CourseSelectionScreen(
                 )
             }
 
-            /* правий блок: магазин + аватар */
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
+                    modifier = Modifier.testTag("btn_shop"),
                     onClick = {
                         ctx.startActivity(Intent(ctx, ShopActivity::class.java))
                     }
@@ -140,6 +158,7 @@ fun CourseSelectionScreen(
                     modifier           = Modifier
                         .size(36.dp)
                         .clip(RoundedCornerShape(8.dp))
+                        .testTag("avatar")
                         .clickable {
                             ctx.startActivity(Intent(ctx, ProfileActivity::class.java))
                         }
@@ -147,7 +166,7 @@ fun CourseSelectionScreen(
             }
         }
 
-        /* --------------- ілюстрація та заголовок --------------- */
+        /* ─────────── Заголовок ─────────── */
         Icon(
             imageVector       = Icons.Default.School,
             contentDescription = null,
@@ -162,19 +181,21 @@ fun CourseSelectionScreen(
         )
         Spacer(Modifier.height(32.dp))
 
-        /* --------------- кнопки курсів --------------- */
+        /* ─────────── Кнопки курсів ─────────── */
         CourseButton(
             title       = "Python",
             description = "Базові концепції та практичні задачі",
             onClick     = { onSelect("python") },
-            cs          = cs
+            cs          = cs,
+            tag         = "btn_python"
         )
         Spacer(Modifier.height(8.dp))
         CourseButton(
             title       = "JavaScript",
             description = "Основи веб-розробки та DOM-маніпуляції",
             onClick     = { onSelect("javascript") },
-            cs          = cs
+            cs          = cs,
+            tag         = "btn_js"
         )
         Spacer(Modifier.height(8.dp))
         CourseButton(
@@ -183,18 +204,21 @@ fun CourseSelectionScreen(
             onClick     = {
                 ctx.startActivity(Intent(ctx, AiAssistantActivity::class.java))
             },
-            cs          = cs
+            cs          = cs,
+            tag         = "btn_ai"
         )
     }
 }
 
 /* ───────── helper Composable ───────── */
+@Suppress("SameParameterValue")
 @Composable
 private fun CourseButton(
     title: String,
     description: String,
     onClick: () -> Unit,
-    cs: ColorScheme
+    cs: ColorScheme,
+    tag: String
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -205,6 +229,7 @@ private fun CourseButton(
         interactionSource = interaction,
         modifier          = Modifier
             .fillMaxWidth()
+            .testTag(tag)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .padding(vertical = 4.dp),
         shape  = RoundedCornerShape(8.dp),
